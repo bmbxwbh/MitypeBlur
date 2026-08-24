@@ -58,6 +58,7 @@ dependencies {
     implementation(libs.androidx.annotation)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
 
     implementation(platform(libs.compose.bom))
@@ -66,9 +67,20 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material.icons.extended)
+    implementation(libs.androidx.compose.material3)
 
     implementation(libs.miuix.ui)
     implementation(libs.miuix.preference)
+    implementation(libs.miuix.blur)
+    implementation(libs.miuix.navigation3.ui)
+
+    implementation(libs.androidx.webkit)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.hiddenapibypass)
+    implementation(libs.material.kolor)
+
+    implementation(platform(libs.okhttp.bom))
+    implementation(libs.okhttp)
 
     "api101CompileOnly"(libs.libxposed.api101)
     "api101Implementation"(libs.libxposed.service101)
@@ -76,19 +88,4 @@ dependencies {
     "api102Implementation"(libs.libxposed.service102)
 
     debugImplementation(libs.compose.ui.tooling)
-
-    implementation(libs.compose.material.icons.extended)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.webkit)
-    implementation(libs.androidx.navigation3.runtime)
-    implementation(libs.hiddenapibypass)
-    implementation(libs.material.kolor)
-    implementation(platform(libs.okhttp.bom))
-    implementation(libs.okhttp)
-    implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.commonmark)
-    implementation(libs.commonmark.ext.gfm.tables)
-    implementation(libs.commonmark.ext.gfm.strikethrough)
-    implementation(libs.commonmark.ext.autolink)
-    implementation(libs.commonmark.ext.task.list.items)
 }
