@@ -1,4 +1,5 @@
 package com.mitype.blur.ui
+import com.mitype.blur.ui.screen.settings.SettingsScreen
 
 import android.content.SharedPreferences
 import android.os.Bundle
