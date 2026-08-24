@@ -76,4 +76,19 @@ dependencies {
     "api102Implementation"(libs.libxposed.service102)
 
     debugImplementation(libs.compose.ui.tooling)
+
+    implementation(libs.compose.material.icons.extended)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.webkit)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.hiddenapibypass)
+    implementation(libs.material.kolor)
+    implementation(platform(libs.okhttp.bom))
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.ext.gfm.tables)
+    implementation(libs.commonmark.ext.gfm.strikethrough)
+    implementation(libs.commonmark.ext.autolink)
+    implementation(libs.commonmark.ext.task.list.items)
 }
