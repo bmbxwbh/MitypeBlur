@@ -60,6 +60,16 @@ fun SettingsScreen(
         var devCorner by remember(prefs) { mutableFloatStateOf(prefs?.getFloat(Config.KEY_DEV_CORNER_DP, -1f) ?: -1f) }
         var devStroke by remember(prefs) { mutableFloatStateOf(prefs?.getFloat(Config.KEY_DEV_STROKE_DP, -1f) ?: -1f) }
         var devGlow by remember(prefs) { mutableFloatStateOf(prefs?.getFloat(Config.KEY_DEV_GLOW_SCALE, -1f) ?: -1f) }
+        var candidateSoften by remember(prefs) { mutableIntStateOf(prefs?.getInt(Config.KEY_CANDIDATE_SOFTEN, Config.DEFAULT_CANDIDATE_SOFTEN) ?: Config.DEFAULT_CANDIDATE_SOFTEN) }
+
+        fun forceRestartIME() {
+            Thread {
+                try {
+                    val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "am", "force-stop", "com.xiaomi.type"))
+                    process.waitFor()
+                } catch (_: Exception) {}
+            }.start()
+        }
 
         // ── helpers ──
         fun save(block: (android.content.SharedPreferences.Editor) -> Unit) {
@@ -121,6 +131,20 @@ fun SettingsScreen(
                                 fontSize = 14.sp,
                                 color = Color(0xFFE65100),
                                 modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                    }
+                }
+
+                // ── 快速操作 ──
+                if (connected) {
+                    item {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            BasicComponent(
+                                title = "⚡ 强制重启输入法",
+                                summary = "需要 Root 权限；点击后立即生效，无需手动操作",
+                                onClick = { forceRestartIME() },
+                                enabled = connected
                             )
                         }
                     }
@@ -270,6 +294,18 @@ fun SettingsScreen(
                                     valueText = if (devGlow < 0) "原生" else "×%.2f".format(devGlow),
                                     valueRange = -1f..3f
                                 )
+                                SliderPreference(
+                                    value = candidateSoften.toFloat(),
+                                    onValueChange = {
+                                        candidateSoften = it.toInt()
+                                        save { s -> s.putInt(Config.KEY_CANDIDATE_SOFTEN, it.toInt()) }
+                                    },
+                                    title = "候选词蓝光柔化 %d%%".format(candidateSoften),
+                                    summary = "0=关闭；数值越大，蓝色候选词降饱和越多（即时生效）",
+                                    valueText = if (candidateSoften <= 0) "关闭" else "%d%%".format(candidateSoften),
+                                    valueRange = 0f..100f,
+                                    steps = 20
+                                )
                             }
                         }
                     }
@@ -297,6 +333,7 @@ fun SettingsScreen(
                                     editor.remove(Config.KEY_DEV_CORNER_DP)
                                     editor.remove(Config.KEY_DEV_STROKE_DP)
                                     editor.remove(Config.KEY_DEV_GLOW_SCALE)
+                                    editor.putInt(Config.KEY_CANDIDATE_SOFTEN, Config.DEFAULT_CANDIDATE_SOFTEN)
                                 }
                                 enable = Config.DEFAULT_ENABLE
                                 blurPreset = Config.DEFAULT_BLUR_PRESET
@@ -307,6 +344,7 @@ fun SettingsScreen(
                                 devColor = baseCfg.effColorScale()
                                 devRadii = baseCfg.effRadiiScale()
                                 devCorner = -1f; devStroke = -1f; devGlow = -1f
+                                candidateSoften = Config.DEFAULT_CANDIDATE_SOFTEN
                             },
                             enabled = connected
                         )

@@ -40,6 +40,7 @@ public final class BlurHooks {
         installMaterialCaptureHook(cl, tm, logFn, configFn); // P1' 材质捕获 + 单次参数写入
         installHapticStyleHook(cl, logFn, configFn);        // H4 触感风格重映射
         installStrokeUniformHook(cl, logFn, configFn);      // DEV 描边着色器细参
+        installCandidateSoftenHook(cl, logFn, configFn);   // SOFT 候选词蓝光柔化
     }
 
     /**
@@ -285,6 +286,44 @@ public final class BlurHooks {
 
     private static float density() {
         return android.content.res.Resources.getSystem().getDisplayMetrics().density;
+    }
+
+    /**
+     * SOFT: 候选词蓝光柔化 —— 拦截 Paint.setColor，
+     * 当检测到高饱和蓝色（候选词高亮色）时，向柔和灰蓝色偏移。
+     * 仅在 devMode 或 candidate_soften>0 时生效。
+     */
+    private static void installCandidateSoftenHook(final ClassLoader cl, final LogFn logFn,
+                                                   final ConfigFn configFn) {
+        try {
+            Class<?> paintCls = Class.forName("android.graphics.Paint", false, cl);
+            Method target = paintCls.getDeclaredMethod("setColor", int.class);
+            HookInstaller.hookBefore(target, new HookInstaller.Interceptor() {
+                @Override
+                public void intercept(HookInstaller.MethodCall call) {
+                    Config c = configFn.get();
+                    if (!c.enable || c.candidateSoften <= 0) return;
+                    Object v = call.getArg(0);
+                    if (!(v instanceof Integer)) return;
+                    int color = (Integer) v;
+                    int r = (color >> 16) & 0xFF;
+                    int g = (color >> 8) & 0xFF;
+                    int b = color & 0xFF;
+                    // 检测亮蓝色：蓝通道显著高于红通道，且整体亮度较高
+                    if (b > r + 40 && b > 140 && g > r) {
+                        float t = Math.min(c.candidateSoften / 100.0f, 1.0f) * 0.65f;
+                        // 向柔和灰蓝 #96AAC8 混合
+                        int nr = Math.round(r + (0x96 - r) * t);
+                        int ng = Math.round(g + (0xAA - g) * t);
+                        int nb = Math.round(b + (0xC8 - b) * t);
+                        call.setArg(0, (0xFF << 24) | (nr << 16) | (ng << 8) | nb);
+                    }
+                }
+            });
+            logFn.invoke("SOFT candidate-soften hook installed", null);
+        } catch (Throwable t) {
+            logFn.invoke("SOFT candidate-soften install failed", t);
+        }
     }
 
 }

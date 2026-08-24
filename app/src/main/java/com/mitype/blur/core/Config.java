@@ -29,6 +29,9 @@ public final class Config {
     public static final String KEY_DEV_CORNER_DP = "dev_corner_dp";
     public static final String KEY_DEV_STROKE_DP = "dev_stroke_dp";
     public static final String KEY_DEV_GLOW_SCALE = "dev_glow_scale";
+    /** 候选词蓝光柔化：0~100，0=关闭，数值越大降饱和越多。 */
+    public static final String KEY_CANDIDATE_SOFTEN = "candidate_soften";
+    public static final int DEFAULT_CANDIDATE_SOFTEN = 0;
 
     /** 遗留键：v1.6 及之前版本的滑杆自由值，升级/重置时必须显式移除，否则钩子侧读到脏配置。 */
     public static final String LEGACY_KEY_BLUR_RADIUS_DP = "blur_radius_dp";
@@ -74,6 +77,7 @@ public final class Config {
     public float devCornerDp = DEFAULT_DEV_OVERRIDE;
     public float devStrokeDp = DEFAULT_DEV_OVERRIDE;
     public float devGlowScale = DEFAULT_DEV_OVERRIDE;
+    public int candidateSoften = DEFAULT_CANDIDATE_SOFTEN;
 
     public Config() {}
 
@@ -92,6 +96,7 @@ public final class Config {
             c.devCornerDp = sp.getFloat(KEY_DEV_CORNER_DP, DEFAULT_DEV_OVERRIDE);
             c.devStrokeDp = sp.getFloat(KEY_DEV_STROKE_DP, DEFAULT_DEV_OVERRIDE);
             c.devGlowScale = sp.getFloat(KEY_DEV_GLOW_SCALE, DEFAULT_DEV_OVERRIDE);
+            c.candidateSoften = sp.getInt(KEY_CANDIDATE_SOFTEN, DEFAULT_CANDIDATE_SOFTEN);
         } catch (Throwable ignored) {
         }
         return c;
