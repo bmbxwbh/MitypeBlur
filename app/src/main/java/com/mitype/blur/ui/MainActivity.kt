@@ -60,9 +60,10 @@ import com.mitype.blur.ui.navigation3.Navigator
 import com.mitype.blur.ui.navigation3.Route
 import com.mitype.blur.ui.navigation3.rememberNavigator
 import com.mitype.blur.ui.screen.about.AboutScreen
+import com.mitype.blur.ui.screen.colorpalette.ColorPaletteScreen
 import com.mitype.blur.ui.screen.home.HomePager
+import com.mitype.blur.ui.screen.permission.PermissionScreen
 import com.mitype.blur.ui.screen.settings.SettingPager
-import com.mitype.blur.ui.screen.params.BlurParamsPagerMiuix
 import com.mitype.blur.ui.theme.TemplateTheme
 import com.mitype.blur.ui.theme.LocalColorMode
 import com.mitype.blur.ui.theme.LocalEnableBlur
@@ -72,8 +73,6 @@ import com.mitype.blur.ui.util.rememberBlurBackdrop
 import com.mitype.blur.ui.util.rememberContentReady
 import com.mitype.blur.ui.viewmodel.MainActivityViewModel
 import com.mitype.blur.ui.viewmodel.MainPagerConfig
-import io.github.libxposed.service.XposedService
-import io.github.libxposed.service.XposedServiceHelper
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
@@ -81,28 +80,11 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class MainActivity : ComponentActivity() {
 
-    private var remotePrefs by mutableStateOf<android.content.SharedPreferences?>(null)
-    private var lspConnected by mutableStateOf(false)
-
     private val intentState = MutableStateFlow(0)
 
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        io.github.libxposed.service.XposedServiceHelper.registerListener(
-            object : io.github.libxposed.service.XposedServiceHelper.OnServiceListener {
-                override fun onServiceBind(service: XposedService) {
-                    runOnUiThread {
-                        remotePrefs = service.getRemotePreferences(Config.PREFS_NAME)
-                        lspConnected = true
-                    }
-                }
-                override fun onServiceDied(service: XposedService) {
-                    runOnUiThread { lspConnected = false }
-                }
-            }
-        )
 
         setContent {
             val viewModel = viewModel<MainActivityViewModel>()
@@ -163,6 +145,8 @@ class MainActivity : ComponentActivity() {
                             entryProvider = entryProvider {
                                 entry<Route.Main> { mainScreenEntry() }
                                 entry<Route.About> { AboutScreen() }
+                                entry<Route.ColorPalette> { ColorPaletteScreen() }
+                                entry<Route.Permissions> { PermissionScreen() }
                                 entry<Route.Home> { mainScreenEntry() }
                                 entry<Route.Settings> { mainScreenEntry() }
                             }
@@ -245,7 +229,6 @@ fun MainScreen(
                     when (page) {
                         0 -> if (isCurrentPage || contentReady) HomePager(navController, bottomInnerPadding, isCurrentPage)
                         1 -> if (isCurrentPage || contentReady) SettingPager(navController, bottomInnerPadding)
-                        2 -> if (isCurrentPage || contentReady) BlurParamsPagerMiuix(prefs = remotePrefs, connected = lspConnected, bottomInnerPadding = bottomInnerPadding)
                     }
                 }
             }
