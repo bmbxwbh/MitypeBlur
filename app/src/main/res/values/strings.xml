@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">小爱输入法毛玻璃调节</string>
+    <string name="module_description">调整超级小爱输入法（com.xiaomi.type）的毛玻璃模糊半径、霜白混色与圆角</string>
+</resources>
