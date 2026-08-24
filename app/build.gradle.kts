@@ -1,8 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    id("kotlin-parcelize")
-    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -13,8 +11,8 @@ android {
         applicationId = "com.mitype.blur"
         minSdk = 33
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.8.0"
+        versionCode = 9
+        versionName = "1.9.0"
     }
 
     buildTypes {
@@ -59,8 +57,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.annotation)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
 
     implementation(platform(libs.compose.bom))
@@ -69,31 +65,9 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material.icons.extended)
-    implementation(libs.androidx.compose.material3)
 
     implementation(libs.miuix.ui)
     implementation(libs.miuix.preference)
-    implementation(libs.miuix.blur)
-    implementation(libs.miuix.navigation3.ui)
-    implementation(libs.miuix.icons)
-
-    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation(libs.miuix.navigation3.ui)
-
-    implementation(libs.androidx.webkit)
-    implementation(libs.androidx.navigation3.runtime)
-    implementation(libs.hiddenapibypass)
-    implementation(libs.material.kolor)
-
-    implementation(platform(libs.okhttp.bom))
-    implementation(libs.okhttp)
-    implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.commonmark)
-    implementation(libs.commonmark.ext.gfm.tables)
-    implementation(libs.commonmark.ext.gfm.strikethrough)
-    implementation(libs.commonmark.ext.autolink)
-    implementation(libs.commonmark.ext.task.list.items)
 
     "api101CompileOnly"(libs.libxposed.api101)
     "api101Implementation"(libs.libxposed.service101)
