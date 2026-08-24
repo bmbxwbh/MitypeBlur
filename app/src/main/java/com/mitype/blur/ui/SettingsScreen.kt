@@ -44,7 +44,7 @@ fun SettingsScreen(
     connected: Boolean,
 ) {
     val dark = isSystemInDarkTheme()
-    MiuixTheme(colors = if (dark) MiuixTheme.colors.darkColorScheme() else MiuixTheme.colors.lightColorScheme()) {
+    MiuixTheme {
         val scrollBehavior = MiuixScrollBehavior()
 
         // ── 状态 ──
