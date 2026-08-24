@@ -60,9 +60,7 @@ import com.mitype.blur.ui.navigation3.Navigator
 import com.mitype.blur.ui.navigation3.Route
 import com.mitype.blur.ui.navigation3.rememberNavigator
 import com.mitype.blur.ui.screen.about.AboutScreen
-import com.mitype.blur.ui.screen.colorpalette.ColorPaletteScreen
 import com.mitype.blur.ui.screen.home.HomePager
-import com.mitype.blur.ui.screen.permission.PermissionScreen
 import com.mitype.blur.ui.screen.settings.SettingPager
 import com.mitype.blur.ui.screen.params.BlurParamsPagerMiuix
 import com.mitype.blur.ui.theme.TemplateTheme
@@ -165,8 +163,6 @@ class MainActivity : ComponentActivity() {
                             entryProvider = entryProvider {
                                 entry<Route.Main> { mainScreenEntry() }
                                 entry<Route.About> { AboutScreen() }
-                                entry<Route.ColorPalette> { ColorPaletteScreen() }
-                                entry<Route.Permissions> { PermissionScreen() }
                                 entry<Route.Home> { mainScreenEntry() }
                                 entry<Route.Settings> { mainScreenEntry() }
                             }

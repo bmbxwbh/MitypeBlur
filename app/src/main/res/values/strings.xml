@@ -3,4 +3,6 @@
     <string name="app_name">小爱输入法毛玻璃调节</string>
     <string name="module_description">调整超级小爱输入法（com.xiaomi.type）的毛玻璃模糊半径、霜白混色与圆角</string>
     <string name="params">参数</string>
+    <string name="home">首页</string>
+    <string name="settings">设置</string>
 </resources>
