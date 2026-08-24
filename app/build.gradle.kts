@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.mitype.blur"
-        minSdk = 26
+        minSdk = 33
         targetSdk = 35
         versionCode = 8
         versionName = "1.8.0"
