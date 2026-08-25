@@ -36,11 +36,36 @@ public final class BlurHooks {
 
     public static void installAll(ClassLoader cl, TargetMap tm, LogFn logFn, ConfigFn configFn) {
         installCapabilityBypass(cl, tm, logFn, configFn);   // CAP 解除系统能力校验
-        installStateGateHook(cl, tm, logFn, configFn);      // H1 (+P3/圆角) + 明暗策略
+        installGateBypassHook(cl, tm, logFn, configFn);     // GATE 解除 h() 门禁（0.2.520+ 新增）
+        installStateGateHook(cl, tm, logFn, configFn);      // H1 状态闸门（0.2.346 兼容）
         installMaterialCaptureHook(cl, tm, logFn, configFn); // P1' 材质捕获 + 单次参数写入
         installHapticStyleHook(cl, logFn, configFn);        // H4 触感风格重映射
         installStrokeUniformHook(cl, logFn, configFn);      // DEV 描边着色器细参
         installCandidateSoftenHook(cl, logFn, configFn);   // SOFT 候选词蓝光柔化
+    }
+
+    /**
+     * GATE: 0.2.520+ 架构中 l()/a() 直接应用材质，通过 h() 检查门禁。
+     * 强制 h() 恒返 true 使得所有门禁检查通过，材质必然被应用。
+     * 仅对 0.2.346 无效（该版本没有 h() 方法），静默跳过即可。
+     */
+    private static void installGateBypassHook(final ClassLoader cl, final TargetMap tm,
+                                              final LogFn logFn, final ConfigFn configFn) {
+        try {
+            Class<?> cls = Class.forName(tm.helperClass, false, cl);
+            Method hGate = cls.getDeclaredMethod("h");
+            HookInstaller.hookAfter(hGate, new HookInstaller.Interceptor() {
+                @Override
+                public void intercept(HookInstaller.MethodCall call) {
+                    if (configFn.get().enable) {
+                        call.setResult(Boolean.TRUE);
+                    }
+                }
+            });
+            logFn.invoke("GATE h()-bypass installed (" + tm.helperClass + ".h)", null);
+        } catch (Throwable t) {
+            logFn.invoke("GATE h()-bypass skipped (not present in this version)", t);
+        }
     }
 
     /**
