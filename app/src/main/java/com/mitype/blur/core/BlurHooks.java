@@ -190,7 +190,7 @@ public final class BlurHooks {
                                                    final LogFn logFn, final ConfigFn configFn) {
         try {
             Class<?> cls = Class.forName(tm.helperClass, false, cl);
-            Method target = cls.getDeclaredMethod("d", boolean.class);
+            Method target = cls.getDeclaredMethod(tm.materialFactoryMethod, boolean.class);
             HookInstaller.hookAfter(target, new HookInstaller.Interceptor() {
                 @Override
                 public void intercept(HookInstaller.MethodCall call) {
