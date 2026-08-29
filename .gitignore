@@ -9,3 +9,4 @@
 .externalNativeBuild
 .cxx
 ui模板/
+.zcode/
