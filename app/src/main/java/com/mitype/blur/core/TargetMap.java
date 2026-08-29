@@ -35,6 +35,7 @@ public final class TargetMap {
         MAP.put(20346L, new TargetMap("bb.s", "xe.h", "q", "xe.b", "c", "e", "d")); // 0.2.346.fcd599f0
         MAP.put(20169L, new TargetMap("gb.r", "cf.i", "s", "cf.b", "c", "f", "d")); // 0.2.169.d9397d3b (MiType)
         MAP.put(20520L, new TargetMap("bb.t", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.520.3c8e7df7 (新版)
+        MAP.put(20596L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.596.319bcc61 (新版：helper 改名 bb.u，xe.h/xe.b 未变)
     }
 
     /** 按目标 versionCode 精确匹配。 */
@@ -96,6 +97,7 @@ public final class TargetMap {
         TargetMap[] candidates = {
                 new TargetMap("bb.s", "xe.h", "q", "xe.b", "c", "e", "d"),
                 new TargetMap("bb.t", "xe.h", "q", "xe.b", "c", "e", "e"),
+                new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e"),
                 new TargetMap("gb.r", "cf.i", "s", "cf.b", "c", "f", "d"),
         };
         for (TargetMap m : candidates) {
