@@ -29,19 +29,32 @@ public final class TargetMap {
         this.materialFactoryMethod = materialFactoryMethod;
     }
 
+    /** 最新已验证规则（0.2.599.905736fd，与 0.2.596 同构）：未知版本默认走这套。 */
+    public static final TargetMap LATEST =
+            new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e");
+
     private static final Map<Long, TargetMap> MAP = new HashMap<>();
 
     static {
         MAP.put(20346L, new TargetMap("bb.s", "xe.h", "q", "xe.b", "c", "e", "d")); // 0.2.346.fcd599f0
         MAP.put(20169L, new TargetMap("gb.r", "cf.i", "s", "cf.b", "c", "f", "d")); // 0.2.169.d9397d3b (MiType)
         MAP.put(20520L, new TargetMap("bb.t", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.520.3c8e7df7 (新版)
-        MAP.put(20596L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.596.319bcc61 (新版：helper 改名 bb.u，xe.h/xe.b 未变)
-        MAP.put(20599L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.599.905736fd (与 596 同构)
+        MAP.put(20596L, LATEST); // 0.2.596.319bcc61 (新版：helper 改名 bb.u，xe.h/xe.b 未变)
+        MAP.put(20599L, LATEST); // 0.2.599.905736fd (与 596 同构)
     }
 
-    /** 按目标 versionCode 精确匹配。 */
+    /** versionCode 是否在表内精确收录。 */
+    public static boolean isKnown(long versionCode) {
+        return MAP.containsKey(versionCode);
+    }
+
+    /**
+     * 按目标 versionCode 精确匹配；未知版本返回 {@link #LATEST}，不再因版本号未收录而失败。
+     * 可能与当前混淆结构不完全一致，调用方可再走 {@link #detectByShape} 校验/择优。
+     */
     public static TargetMap get(long versionCode) {
-        return MAP.get(versionCode);
+        TargetMap m = MAP.get(versionCode);
+        return m != null ? m : LATEST;
     }
 
     /** 形状校验：确认 helper 类具备本模块依赖的全部成员。 */
@@ -93,13 +106,12 @@ public final class TargetMap {
         return "d"; // 兜底默认
     }
 
-    /** 未知版本兜底：逐个候选映射做形状探测，两套都失败返回 null。 */
+    /** 未知版本形状探测：优先匹配已收录候选，失败时由调用方回退 {@link #LATEST}。 */
     public static TargetMap detectByShape(ClassLoader cl) {
         TargetMap[] candidates = {
+                LATEST,
                 new TargetMap("bb.s", "xe.h", "q", "xe.b", "c", "e", "d"),
                 new TargetMap("bb.t", "xe.h", "q", "xe.b", "c", "e", "e"),
-                new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e"),
-                new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e"),
                 new TargetMap("gb.r", "cf.i", "s", "cf.b", "c", "f", "d"),
         };
         for (TargetMap m : candidates) {

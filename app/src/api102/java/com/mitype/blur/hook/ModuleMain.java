@@ -71,16 +71,25 @@ public class ModuleMain extends XposedModule {
                 versionCode = vf.getLong(param.getApplicationInfo());
             } catch (Throwable ignored) {
             }
-            TargetMap tm = TargetMap.get(versionCode);
-            if (tm == null) {
+            // 已收录版本精确命中；未知版本先形状探测（更贴当前混淆结构），失败则用 LATEST 规则
+            TargetMap tm;
+            String source;
+            if (TargetMap.isKnown(versionCode)) {
+                tm = TargetMap.get(versionCode);
+                source = "exact";
+            } else {
                 log(Log.INFO, BlurHooks.TAG,
-                        "unknown IME versionCode=" + versionCode + ", trying shape-detect fallback");
-                tm = TargetMap.detectByShape(param.getClassLoader());
+                        "unknown IME versionCode=" + versionCode + ", trying shape-detect then LATEST");
+                TargetMap shaped = TargetMap.detectByShape(param.getClassLoader());
+                if (shaped != null) {
+                    tm = shaped;
+                    source = "shape";
+                } else {
+                    tm = TargetMap.LATEST;
+                    source = "LATEST fallback";
+                }
             }
-            if (tm == null) {
-                log(Log.WARN, BlurHooks.TAG, "no compatible target mapping found, abort");
-                return;
-            }
+            log(Log.INFO, BlurHooks.TAG, "using mapping " + tm.helperClass + " (" + source + ")");
             final TargetMap map = tm;
             // 启动快照：进程内配置冻结 —— 任何修改需重启输入法进程生效（刻意设计：
             // 避免对出厂材质单例的反复破坏性改写；设置页顶部有醒目提示）。
