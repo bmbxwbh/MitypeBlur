@@ -29,18 +29,19 @@ public final class TargetMap {
         this.materialFactoryMethod = materialFactoryMethod;
     }
 
-    /** 最新已验证规则（0.2.599.905736fd，与 0.2.596 同构）：未知版本默认走这套。 */
+    /** 最新已验证规则（0.2.790.6ca2b9d4）：未知版本默认走这套。 */
     public static final TargetMap LATEST =
-            new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e");
+            new TargetMap("bb.x", "xe.h", "q", "xe.b", "c", "e", "d");
 
     private static final Map<Long, TargetMap> MAP = new HashMap<>();
 
     static {
         MAP.put(20346L, new TargetMap("bb.s", "xe.h", "q", "xe.b", "c", "e", "d")); // 0.2.346.fcd599f0
         MAP.put(20169L, new TargetMap("gb.r", "cf.i", "s", "cf.b", "c", "f", "d")); // 0.2.169.d9397d3b (MiType)
-        MAP.put(20520L, new TargetMap("bb.t", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.520.3c8e7df7 (新版)
-        MAP.put(20596L, LATEST); // 0.2.596.319bcc61 (新版：helper 改名 bb.u，xe.h/xe.b 未变)
-        MAP.put(20599L, LATEST); // 0.2.599.905736fd (与 596 同构)
+        MAP.put(20520L, new TargetMap("bb.t", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.520.3c8e7df7
+        MAP.put(20596L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.596.319bcc61
+        MAP.put(20599L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.599.905736fd
+        MAP.put(20790L, LATEST); // 0.2.790.6ca2b9d4：helper 改名 bb.x，材质工厂回到 d(Z)
     }
 
     /** versionCode 是否在表内精确收录。 */
@@ -64,12 +65,14 @@ public final class TargetMap {
             for (String f : new String[]{"d", "e", "f", "k"}) {
                 c.getDeclaredField(f);
             }
-            // 材质工厂方法可能叫 d 或 e，任一存在即可
+            // 材质工厂方法可能叫 d 或 e；返回类型名形如 zg.e / xxx.e
             boolean hasFactory = false;
             for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
                 if (m.getParameterTypes().length == 1
                         && m.getParameterTypes()[0] == boolean.class
-                        && m.getReturnType().getName().contains(".e;")
+                        && !m.getReturnType().equals(void.class)
+                        && !m.getReturnType().equals(boolean.class)
+                        && m.getReturnType().getName().endsWith(".e")
                         && java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
                     hasFactory = true;
                     break;
@@ -109,7 +112,8 @@ public final class TargetMap {
     /** 未知版本形状探测：优先匹配已收录候选，失败时由调用方回退 {@link #LATEST}。 */
     public static TargetMap detectByShape(ClassLoader cl) {
         TargetMap[] candidates = {
-                LATEST,
+                LATEST, // bb.x @ 0.2.790
+                new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e"),
                 new TargetMap("bb.s", "xe.h", "q", "xe.b", "c", "e", "d"),
                 new TargetMap("bb.t", "xe.h", "q", "xe.b", "c", "e", "e"),
                 new TargetMap("gb.r", "cf.i", "s", "cf.b", "c", "f", "d"),

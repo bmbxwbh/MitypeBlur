@@ -3,11 +3,12 @@ package com.mitype.blur.core;
 import java.lang.reflect.Method;
 
 /**
- * Hook 策略（基于 smali 交叉验证修正，支持 0.2.346 / 0.2.169 双版本）：
+ * Hook 策略（基于 smali 交叉验证修正，支持 0.2.346 ~ 0.2.790）：
  * - CAP: 能力总闸/OS版本解除（详见 installCapabilityBypass），需在其余钩子前安装
- * - H1: helper.l() after —— d=TRUE 接通毛玻璃；e/f 为互斥明暗极性流，按 material_policy
- *   二选一写入；k 材质变体与极性一致。状态必须每次事件重写（原版 l() 会回写覆盖）
- * - P1': helper.d(Z) after —— 材质懒加载全进程仅构建一次：捕获实例并【一次性】套用预设
+ * - GATE: 启用门禁解除 —— 旧版 h()（0.2.520+）；0.2.790+ 改为 g()
+ * - H1: 材质明暗策略 —— 旧版 helper.l() after 写 d/e/f/k；0.2.790+ 在 b(View)
+ *   before 写字段 l（l() 已变为清理路径，不再当状态闸）
+ * - P1': helper.d(Z)/e(Z) after —— 材质懒加载全进程仅构建一次：捕获实例并【一次性】套用预设
  *   （= 出厂混色三层 alpha 等比缩放；J/f[] 几何零改动）。配置采用启动快照（ModuleMain 只在
  *   包就绪时读取一次），任何修改需重启输入法进程生效 —— 刻意设计：单次写入杜绝对出厂
  *   单例的累积性破坏（此前热重放缩放 f[] 曾导致深色套近黑、浅色套发白且无法还原）
@@ -36,8 +37,8 @@ public final class BlurHooks {
 
     public static void installAll(ClassLoader cl, TargetMap tm, LogFn logFn, ConfigFn configFn) {
         installCapabilityBypass(cl, tm, logFn, configFn);   // CAP 解除系统能力校验
-        installGateBypassHook(cl, tm, logFn, configFn);     // GATE 解除 h() 门禁（0.2.520+ 新增）
-        installStateGateHook(cl, tm, logFn, configFn);      // H1 状态闸门（0.2.346 兼容）
+        installGateBypassHook(cl, tm, logFn, configFn);     // GATE 解除启用门禁
+        installStateGateHook(cl, tm, logFn, configFn);      // H1 状态闸门 / 明暗策略
         installMaterialCaptureHook(cl, tm, logFn, configFn); // P1' 材质捕获 + 单次参数写入
         installHapticStyleHook(cl, logFn, configFn);        // H4 触感风格重映射
         installStrokeUniformHook(cl, logFn, configFn);      // DEV 描边着色器细参
@@ -45,9 +46,24 @@ public final class BlurHooks {
     }
 
     /**
-     * GATE: 0.2.520+ 架构中 l()/a() 直接应用材质，通过 h() 检查门禁。
-     * 强制 h() 恒返 true 使得所有门禁检查通过，材质必然被应用。
-     * 仅对 0.2.346 无效（该版本没有 h() 方法），静默跳过即可。
+     * 0.2.790+：helper 为 bb.x，启用判定在 g()（读字段 e 的 Boolean Flow），
+     * 明暗材质变体在字段 l。旧版（bb.u/t/s）仍是 h() 门禁 + d/e/f/k 状态流。
+     */
+    private static boolean isModernHelper(Class<?> helperCls) {
+        try {
+            Method g = helperCls.getDeclaredMethod("g");
+            java.lang.reflect.Field l = helperCls.getDeclaredField("l");
+            return g.getReturnType() == boolean.class && l.getType() == boolean.class;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * GATE: 解除启用门禁，使材质必然被应用。
+     * - 旧版：l()/a() 路径上的 h() 检查（0.2.520+）
+     * - 0.2.790+：b()/f()/k() 开头的 g() 检查
+     * 缺方法时静默跳过。
      */
     private static void installGateBypassHook(final ClassLoader cl, final TargetMap tm,
                                               final LogFn logFn, final ConfigFn configFn) {
@@ -65,6 +81,23 @@ public final class BlurHooks {
             logFn.invoke("GATE h()-bypass installed (" + tm.helperClass + ".h)", null);
         } catch (Throwable t) {
             logFn.invoke("GATE h()-bypass skipped (not present in this version)", t);
+        }
+        try {
+            Class<?> cls = Class.forName(tm.helperClass, false, cl);
+            Method gGate = cls.getDeclaredMethod("g");
+            if (gGate.getParameterCount() == 0 && gGate.getReturnType() == boolean.class) {
+                HookInstaller.hookAfter(gGate, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        if (configFn.get().enable) {
+                            call.setResult(Boolean.TRUE);
+                        }
+                    }
+                });
+                logFn.invoke("GATE g()-bypass installed (" + tm.helperClass + ".g)", null);
+            }
+        } catch (Throwable t) {
+            logFn.invoke("GATE g()-bypass skipped (not present in this version)", t);
         }
     }
 
@@ -148,10 +181,28 @@ public final class BlurHooks {
     }
 
     // H1: 状态闸门 + 材质明暗策略 + 参数重放
+    // 旧版：hook l() 后写 d/e/f/k；0.2.790+：l() 已变为清理路径，只写字段 l 选择明暗材质。
     private static void installStateGateHook(final ClassLoader cl, final TargetMap tm,
                                              final LogFn logFn, final ConfigFn configFn) {
         try {
             Class<?> cls = Class.forName(tm.helperClass, false, cl);
+            final boolean modern = isModernHelper(cls);
+            if (modern) {
+                // b(View) 是真正应用材质的入口；在 before 设 l，保证选中正确明暗变体
+                Method apply = cls.getDeclaredMethod("b", android.view.View.class);
+                HookInstaller.hookBefore(apply, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        Config cfg = configFn.get();
+                        Object thiz = call.getThisObject();
+                        if (thiz == null || !cfg.enable) return;
+                        boolean wantDark = resolveWantDark(thiz, cfg);
+                        ReflectUtil.setBooleanField(thiz, "l", wantDark);
+                    }
+                });
+                logFn.invoke("H1 modern polarity via " + tm.helperClass + ".b / field l", null);
+                return;
+            }
             Method target = cls.getDeclaredMethod("l");
             HookInstaller.hookAfter(target, new HookInstaller.Interceptor() {
                 @Override
