@@ -181,14 +181,14 @@ public final class BlurHooks {
     }
 
     // H1: 状态闸门 + 材质明暗策略 + 参数重放
-    // 旧版：hook l() 后写 d/e/f/k；0.2.790+：l() 已变为清理路径，只写字段 l 选择明暗材质。
+    // 旧版：hook l() 后写 d/e/f/k；0.2.790+：k=系统深浅色，l=材质极性，e=模糊启用流。
+    // 只写 l 会被 j() 用 k 冲掉，且深色材质 + 浅色主题会导致白字，必须 k/l/e 对齐。
     private static void installStateGateHook(final ClassLoader cl, final TargetMap tm,
                                              final LogFn logFn, final ConfigFn configFn) {
         try {
             Class<?> cls = Class.forName(tm.helperClass, false, cl);
             final boolean modern = isModernHelper(cls);
             if (modern) {
-                // b(View) 是真正应用材质的入口；在 before 设 l，保证选中正确明暗变体
                 Method apply = cls.getDeclaredMethod("b", android.view.View.class);
                 HookInstaller.hookBefore(apply, new HookInstaller.Interceptor() {
                     @Override
@@ -197,10 +197,14 @@ public final class BlurHooks {
                         Object thiz = call.getThisObject();
                         if (thiz == null || !cfg.enable) return;
                         boolean wantDark = resolveWantDark(thiz, cfg);
+                        // k=系统深色旗标（j() 会拷进 l）；l=材质变体；e=启用 Flow（g() 读它）。
+                        // 只写 l 时：FORCE_DARK 下深色材质 + 浅色主题(k=false) → 白字铺在浅色键上。
+                        ReflectUtil.setBooleanField(thiz, "k", wantDark);
                         ReflectUtil.setBooleanField(thiz, "l", wantDark);
+                        ReflectUtil.setFlowValue(thiz, "e", Boolean.TRUE);
                     }
                 });
-                logFn.invoke("H1 modern polarity via " + tm.helperClass + ".b / field l", null);
+                logFn.invoke("H1 modern polarity via " + tm.helperClass + ".b / k+l+e", null);
                 return;
             }
             Method target = cls.getDeclaredMethod("l");
