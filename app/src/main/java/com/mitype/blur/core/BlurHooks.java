@@ -19,6 +19,8 @@ public final class BlurHooks {
     /** 捕获的缓存材质实例（懒加载各构建一次，之后复用同一对象）。 */
     private static volatile Object materialLight;
     private static volatile Object materialDark;
+    /** 最近一次成功挂上的 blur 包装（xe.e/cf.e）；clear 时回填避免闪一下底色。 */
+    private static volatile Object lastBlurWrap;
 
     public interface LogFn {
         void invoke(String msg, Throwable t);
@@ -335,6 +337,57 @@ public final class BlurHooks {
             logFn.invoke("P1' material-capture installed", null);
         } catch (Throwable t) {
             logFn.invoke("P1' install failed", t);
+        }
+        installAntiFlashHooks(cl, tm, logFn, configFn);
+    }
+
+    /**
+     * 发送/刷新时 k()/l() 会先 clear 材质再重挂，中间一帧只剩底色 → 看起来像压暗。
+     * enable 时把 clear(null) 换成再挂一次上次成功的包装；关闭模块时仍允许真清空。
+     */
+    private static void installAntiFlashHooks(ClassLoader cl, TargetMap tm,
+                                              LogFn logFn, ConfigFn configFn) {
+        try {
+            Class<?> capCls = Class.forName(tm.capabilityClass, false, cl);
+            String pkg = tm.blurApiClass.substring(0, tm.blurApiClass.lastIndexOf('.'));
+            Class<?> matCls = Class.forName(pkg + ".e", false, cl);
+            Method apply = capCls.getDeclaredMethod("a",
+                    android.view.View.class, matCls);
+            HookInstaller.hookBefore(apply, new HookInstaller.Interceptor() {
+                @Override
+                public void intercept(HookInstaller.MethodCall call) {
+                    if (!configFn.get().enable) return;
+                    Object mat = call.getArg(1);
+                    if (mat != null) {
+                        lastBlurWrap = mat;
+                        return;
+                    }
+                    Object sub = lastBlurWrap;
+                    if (sub != null) {
+                        call.setArg(1, sub);
+                    }
+                }
+            });
+            logFn.invoke("ANTI-FLASH material-clear substitute installed", null);
+        } catch (Throwable t) {
+            logFn.invoke("ANTI-FLASH material-clear skip failed", t);
+        }
+        try {
+            Class<?> apiCls = Class.forName(tm.blurApiClass, false, cl);
+            Method pass = apiCls.getDeclaredMethod("A",
+                    android.view.View.class, boolean.class);
+            HookInstaller.hookBefore(pass, new HookInstaller.Interceptor() {
+                @Override
+                public void intercept(HookInstaller.MethodCall call) {
+                    if (!configFn.get().enable) return;
+                    if (Boolean.FALSE.equals(call.getArg(1))) {
+                        call.setArg(1, Boolean.TRUE);
+                    }
+                }
+            });
+            logFn.invoke("ANTI-FLASH pass-window disable blocked", null);
+        } catch (Throwable t) {
+            logFn.invoke("ANTI-FLASH pass-window skip failed", t);
         }
     }
 
