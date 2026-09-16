@@ -21,6 +21,11 @@ public final class BlurHooks {
     private static volatile Object materialDark;
     /** 最近一次成功挂上的 blur 包装（xe.e/cf.e）；clear 时回填避免闪一下底色。 */
     private static volatile Object lastBlurWrap;
+    /** b() 成功挂上时的明暗；k() 同极性时整段跳过，避免 clear+重挂闪一下。 */
+    private static volatile Boolean lastAppliedPolarity;
+    /** f() 重建窗口内：View.setBackgroundColor 改透明，避免纯色底闪一下。 */
+    private static final ThreadLocal<Boolean> sInBlurSetup = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> sSkipReapply = new ThreadLocal<>();
 
     public interface LogFn {
         void invoke(String msg, Throwable t);
@@ -229,9 +234,60 @@ public final class BlurHooks {
                 };
                 Method entry = cls.getDeclaredMethod("f",
                         boolean.class, android.widget.FrameLayout.class, int.class);
-                HookInstaller.hookBefore(entry, alignPolarity);
+                HookInstaller.hookBefore(entry, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        sInBlurSetup.set(Boolean.TRUE);
+                        Object thiz = call.getThisObject();
+                        if (thiz != null && configFn.get().enable) {
+                            ReflectUtil.setBooleanField(thiz, "l",
+                                    resolveWantDark(thiz, configFn.get()));
+                        }
+                    }
+                });
+                HookInstaller.hookAfter(entry, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        sInBlurSetup.remove();
+                    }
+                });
                 Method apply = cls.getDeclaredMethod("b", android.view.View.class);
                 HookInstaller.hookBefore(apply, alignPolarity);
+                HookInstaller.hookAfter(apply, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        Object thiz = call.getThisObject();
+                        if (thiz != null) {
+                            lastAppliedPolarity = ReflectUtil.getBooleanField(thiz, "l", false);
+                        }
+                    }
+                });
+                // k() 同极性重挂 = clear+apply 闪一下；用 o 旗标整段跳过
+                Method reapply = cls.getDeclaredMethod("k");
+                HookInstaller.hookBefore(reapply, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        Object thiz = call.getThisObject();
+                        if (thiz == null || !configFn.get().enable) return;
+                        boolean l = ReflectUtil.getBooleanField(thiz, "l", false);
+                        Object view = ReflectUtil.getObjectField(thiz, "i");
+                        if (view != null && lastAppliedPolarity != null
+                                && lastAppliedPolarity == l) {
+                            ReflectUtil.setBooleanField(thiz, "o", true);
+                            sSkipReapply.set(Boolean.TRUE);
+                        }
+                    }
+                });
+                HookInstaller.hookAfter(reapply, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        Object thiz = call.getThisObject();
+                        if (Boolean.TRUE.equals(sSkipReapply.get()) && thiz != null) {
+                            ReflectUtil.setBooleanField(thiz, "o", false);
+                        }
+                        sSkipReapply.remove();
+                    }
+                });
                 Method cleanup = cls.getDeclaredMethod("l");
                 HookInstaller.hookBefore(cleanup, new HookInstaller.Interceptor() {
                     @Override
@@ -254,6 +310,23 @@ public final class BlurHooks {
                         }
                     }
                 });
+                // f() 窗口内新 View 的纯色底 → 透明，避免「压暗」一帧
+                try {
+                    Method setBg = android.view.View.class.getDeclaredMethod(
+                            "setBackgroundColor", int.class);
+                    HookInstaller.hookBefore(setBg, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            if (!configFn.get().enable) return;
+                            if (Boolean.TRUE.equals(sInBlurSetup.get())) {
+                                call.setArg(0, Integer.valueOf(0));
+                            }
+                        }
+                    });
+                    logFn.invoke("ANTI-FLASH f() solid bg → transparent", null);
+                } catch (Throwable t) {
+                    logFn.invoke("ANTI-FLASH bg hook failed", t);
+                }
                 logFn.invoke("H1b modern polarity+flash (" + tm.helperClass + ")", null);
                 return;
             }
