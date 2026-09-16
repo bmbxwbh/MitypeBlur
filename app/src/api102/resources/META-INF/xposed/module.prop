@@ -1,7 +1,7 @@
 id=com.mitype.blur
 name=Mitype Blur
-version=v2.1.2 (api102)
-versionCode=212
+version=v2.1.3 (api102)
+versionCode=213
 author=mitype
 description=Tune the frosted-glass blur of Super XiaoAi input method (com.xiaomi.type)
 minApiVersion=101
