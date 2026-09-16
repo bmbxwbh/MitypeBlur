@@ -67,16 +67,22 @@ public final class BlurHooks {
                                               final LogFn logFn, final ConfigFn configFn) {
         try {
             Class<?> cls = Class.forName(tm.helperClass, false, cl);
-            Method hGate = cls.getDeclaredMethod("h");
-            HookInstaller.hookAfter(hGate, new HookInstaller.Interceptor() {
-                @Override
-                public void intercept(HookInstaller.MethodCall call) {
-                    if (configFn.get().enable) {
-                        call.setResult(Boolean.TRUE);
+            // 0.2.790+：h() 读字段 f，T(h,g,i) 把 h()=true 当强制深色主题 → 白字。
+            // 旧版 h() 才是应用门禁；modern 只 hook g()。
+            if (!isModernHelper(cls)) {
+                Method hGate = cls.getDeclaredMethod("h");
+                HookInstaller.hookAfter(hGate, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        if (configFn.get().enable) {
+                            call.setResult(Boolean.TRUE);
+                        }
                     }
-                }
-            });
-            logFn.invoke("GATE h()-bypass installed (" + tm.helperClass + ".h)", null);
+                });
+                logFn.invoke("GATE h()-bypass installed (" + tm.helperClass + ".h)", null);
+            } else {
+                logFn.invoke("GATE h() skipped on modern helper (theme force-dark flag)", null);
+            }
         } catch (Throwable t) {
             logFn.invoke("GATE h()-bypass skipped (not present in this version)", t);
         }
