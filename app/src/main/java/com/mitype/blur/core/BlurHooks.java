@@ -3,16 +3,13 @@ package com.mitype.blur.core;
 import java.lang.reflect.Method;
 
 /**
- * Hook 策略（基于 smali 交叉验证修正，支持 0.2.346 ~ 0.2.790）：
+ * Hook 策略（基于 smali 交叉验证修正，支持 0.2.346 ~ 0.2.910）：
  * - CAP: 能力总闸/OS版本解除（详见 installCapabilityBypass），需在其余钩子前安装
- * - GATE: 启用门禁解除 —— 旧版 h()（0.2.520+）；0.2.790+ 改为 g()
- * - H1: 材质明暗策略 —— 旧版 helper.l() after 写 d/e/f/k；0.2.790+ 在 b(View)
- *   before 写字段 l（l() 已变为清理路径，不再当状态闸）
- * - P1': helper.d(Z)/e(Z) after —— 材质懒加载全进程仅构建一次：捕获实例并【一次性】套用预设
- *   （= 出厂混色三层 alpha 等比缩放；J/f[] 几何零改动）。配置采用启动快照（ModuleMain 只在
- *   包就绪时读取一次），任何修改需重启输入法进程生效 —— 刻意设计：单次写入杜绝对出厂
- *   单例的累积性破坏（此前热重放缩放 f[] 曾导致深色套近黑、浅色套发白且无法还原）
- * - R1 已删除：setMiBackgroundBlurRadius 不在键盘模糊管线中，属死钩子
+ * - GATE: 启用门禁 —— 旧版 h()；0.2.790+ 为 g()
+ * - H1a: 锁定深/浅色 hook UiStateManager.u()（bb.p1.u），驱动文字/主题/helper.k
+ * - H1b: 材质极性在 f()/b() 入口写 l；l() 摘 View 减少刷新闪烁
+ * - P1': helper.d(Z)/e(Z) after —— 材质懒加载单次套用预设（alpha 等比缩放）
+ * - R1 已删除：setMiBackgroundBlurRadius 不在键盘模糊管线中
  */
 public final class BlurHooks {
 
@@ -38,7 +35,8 @@ public final class BlurHooks {
     public static void installAll(ClassLoader cl, TargetMap tm, LogFn logFn, ConfigFn configFn) {
         installCapabilityBypass(cl, tm, logFn, configFn);   // CAP 解除系统能力校验
         installGateBypassHook(cl, tm, logFn, configFn);     // GATE 解除启用门禁
-        installStateGateHook(cl, tm, logFn, configFn);      // H1 状态闸门 / 明暗策略
+        installUiThemeHook(cl, logFn, configFn);            // H1a 锁定深/浅色 → UiStateManager.u()
+        installStateGateHook(cl, tm, logFn, configFn);      // H1b 材质极性 / 防闪烁
         installMaterialCaptureHook(cl, tm, logFn, configFn); // P1' 材质捕获 + 单次参数写入
         installHapticStyleHook(cl, logFn, configFn);        // H4 触感风格重映射
         installStrokeUniformHook(cl, logFn, configFn);      // DEV 描边着色器细参
@@ -180,10 +178,36 @@ public final class BlurHooks {
         }
     }
 
-    // H1: 0.2.790+ 材质极性
-    // f() 在建 View 时就按字段 l 设背景色，b() 才应用材质 —— 必须在 f() 入口就把 l 对齐系统 k。
-    // l() 是清理路径：刷新时会先清材质再删 View，造成闪烁；enable 时临时摘掉 i 让清材质空转。
-    // 不写 Flow e（会触发收集器重入/额外重挂）；不改 k（改了会反色）。
+    // H1a: 0.2.790+ 文字/UI 主题源 —— UiStateManager.u()
+    // helper.k 由 IMS 从 u() 拷入；文字色、按键底色都跟 u()。
+    // 锁定深/浅色必须改 u()，只改 helper.k 会出现「浅色底 + 白字」。
+    private static void installUiThemeHook(ClassLoader cl, LogFn logFn, ConfigFn configFn) {
+        try {
+            Class<?> ui = Class.forName("bb.p1", false, cl);
+            Method u = ui.getDeclaredMethod("u");
+            HookInstaller.hookAfter(u, new HookInstaller.Interceptor() {
+                @Override
+                public void intercept(HookInstaller.MethodCall call) {
+                    Config cfg = configFn.get();
+                    if (!cfg.enable) return;
+                    if (cfg.materialPolicy == Config.POLICY_FORCE_DARK) {
+                        call.setResult(Boolean.TRUE);
+                    } else if (cfg.materialPolicy == Config.POLICY_FORCE_LIGHT) {
+                        call.setResult(Boolean.FALSE);
+                    }
+                    // FOLLOW_SYSTEM：不改写，走原版（主题偏好 + 系统夜间）
+                }
+            });
+            logFn.invoke("H1a UiStateManager.u() policy override installed", null);
+        } catch (Throwable t) {
+            logFn.invoke("H1a u() hook skipped (not present?)", t);
+        }
+    }
+
+    // H1b: 材质极性 + 防闪烁
+    // f() 建 View 时按 l 设背景色，b() 才挂材质 —— 入口就要对齐。
+    // FOLLOW_SYSTEM：l 跟 k（k 来自 u()）。锁定深/浅：l 直接用 resolveWantDark。
+    // l() 清材质造成闪烁：enable 时临时摘掉 i 空转。
     private static final ThreadLocal<Object> sLatchedBlurView = new ThreadLocal<>();
 
     private static void installStateGateHook(final ClassLoader cl, final TargetMap tm,
@@ -192,30 +216,26 @@ public final class BlurHooks {
             Class<?> cls = Class.forName(tm.helperClass, false, cl);
             final boolean modern = isModernHelper(cls);
             if (modern) {
-                // f() 入口：背景色与后续材质共用同一 l
+                HookInstaller.Interceptor alignPolarity = new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        Object thiz = call.getThisObject();
+                        if (thiz == null || !configFn.get().enable) return;
+                        Config cfg = configFn.get();
+                        boolean wantDark;
+                        if (cfg.materialPolicy == Config.POLICY_FOLLOW_SYSTEM) {
+                            wantDark = ReflectUtil.getBooleanField(thiz, "k", false);
+                        } else {
+                            wantDark = resolveWantDark(thiz, cfg);
+                        }
+                        ReflectUtil.setBooleanField(thiz, "l", wantDark);
+                    }
+                };
                 Method entry = cls.getDeclaredMethod("f",
                         boolean.class, android.widget.FrameLayout.class, int.class);
-                HookInstaller.hookBefore(entry, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        Object thiz = call.getThisObject();
-                        if (thiz == null || !configFn.get().enable) return;
-                        ReflectUtil.setBooleanField(thiz, "l",
-                                ReflectUtil.getBooleanField(thiz, "k", false));
-                    }
-                });
-                // b() 兜底（k() 等路径也可能直接进 b）
+                HookInstaller.hookBefore(entry, alignPolarity);
                 Method apply = cls.getDeclaredMethod("b", android.view.View.class);
-                HookInstaller.hookBefore(apply, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        Object thiz = call.getThisObject();
-                        if (thiz == null || !configFn.get().enable) return;
-                        ReflectUtil.setBooleanField(thiz, "l",
-                                ReflectUtil.getBooleanField(thiz, "k", false));
-                    }
-                });
-                // l() 清材质空转：f() 已用局部引用保存旧 View 用于 removeView
+                HookInstaller.hookBefore(apply, alignPolarity);
                 Method cleanup = cls.getDeclaredMethod("l");
                 HookInstaller.hookBefore(cleanup, new HookInstaller.Interceptor() {
                     @Override
@@ -238,7 +258,7 @@ public final class BlurHooks {
                         }
                     }
                 });
-                logFn.invoke("H1 modern: l@f/b + latch-clear (" + tm.helperClass + ")", null);
+                logFn.invoke("H1b modern polarity+flash (" + tm.helperClass + ")", null);
                 return;
             }
             Method target = cls.getDeclaredMethod("l");
