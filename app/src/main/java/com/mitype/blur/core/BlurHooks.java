@@ -180,30 +180,65 @@ public final class BlurHooks {
         }
     }
 
-    // H1: 状态闸门 + 材质明暗策略 + 参数重放
-    // 旧版：hook l() 后写 d/e/f/k。
-    // 0.2.790+：k=系统深色（文字/UI 跟它走），j() 强制 l=k；改 k 会反色。
-    // 材质极性必须跟系统：只写 l=当前 k，并打开启用流 e；不碰 k。
+    // H1: 0.2.790+ 材质极性
+    // f() 在建 View 时就按字段 l 设背景色，b() 才应用材质 —— 必须在 f() 入口就把 l 对齐系统 k。
+    // l() 是清理路径：刷新时会先清材质再删 View，造成闪烁；enable 时临时摘掉 i 让清材质空转。
+    // 不写 Flow e（会触发收集器重入/额外重挂）；不改 k（改了会反色）。
+    private static final ThreadLocal<Object> sLatchedBlurView = new ThreadLocal<>();
+
     private static void installStateGateHook(final ClassLoader cl, final TargetMap tm,
                                              final LogFn logFn, final ConfigFn configFn) {
         try {
             Class<?> cls = Class.forName(tm.helperClass, false, cl);
             final boolean modern = isModernHelper(cls);
             if (modern) {
+                // f() 入口：背景色与后续材质共用同一 l
+                Method entry = cls.getDeclaredMethod("f",
+                        boolean.class, android.widget.FrameLayout.class, int.class);
+                HookInstaller.hookBefore(entry, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        Object thiz = call.getThisObject();
+                        if (thiz == null || !configFn.get().enable) return;
+                        ReflectUtil.setBooleanField(thiz, "l",
+                                ReflectUtil.getBooleanField(thiz, "k", false));
+                    }
+                });
+                // b() 兜底（k() 等路径也可能直接进 b）
                 Method apply = cls.getDeclaredMethod("b", android.view.View.class);
                 HookInstaller.hookBefore(apply, new HookInstaller.Interceptor() {
                     @Override
                     public void intercept(HookInstaller.MethodCall call) {
-                        Config cfg = configFn.get();
                         Object thiz = call.getThisObject();
-                        if (thiz == null || !cfg.enable) return;
-                        // 读系统深色旗标，不改写 k；材质与主题保持一致，避免反色
-                        boolean systemDark = ReflectUtil.getBooleanField(thiz, "k", false);
-                        ReflectUtil.setBooleanField(thiz, "l", systemDark);
-                        ReflectUtil.setFlowValue(thiz, "e", Boolean.TRUE);
+                        if (thiz == null || !configFn.get().enable) return;
+                        ReflectUtil.setBooleanField(thiz, "l",
+                                ReflectUtil.getBooleanField(thiz, "k", false));
                     }
                 });
-                logFn.invoke("H1 modern follow-system polarity (" + tm.helperClass + ".b)", null);
+                // l() 清材质空转：f() 已用局部引用保存旧 View 用于 removeView
+                Method cleanup = cls.getDeclaredMethod("l");
+                HookInstaller.hookBefore(cleanup, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        Object thiz = call.getThisObject();
+                        if (thiz == null || !configFn.get().enable) return;
+                        Object view = ReflectUtil.getObjectField(thiz, "i");
+                        sLatchedBlurView.set(view);
+                        ReflectUtil.setObjectField(thiz, "i", null);
+                    }
+                });
+                HookInstaller.hookAfter(cleanup, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        Object thiz = call.getThisObject();
+                        Object view = sLatchedBlurView.get();
+                        sLatchedBlurView.remove();
+                        if (thiz != null && view != null) {
+                            ReflectUtil.setObjectField(thiz, "i", view);
+                        }
+                    }
+                });
+                logFn.invoke("H1 modern: l@f/b + latch-clear (" + tm.helperClass + ")", null);
                 return;
             }
             Method target = cls.getDeclaredMethod("l");

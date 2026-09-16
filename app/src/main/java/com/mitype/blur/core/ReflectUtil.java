@@ -28,6 +28,16 @@ public final class ReflectUtil {
         }
     }
 
+    /** 写对象引用字段。 */
+    public static void setObjectField(Object obj, String name, Object value) {
+        try {
+            Field f = obj.getClass().getDeclaredField(name);
+            f.setAccessible(true);
+            f.set(obj, value);
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** 读 boolean 字段，失败返回 def。 */
     public static boolean getBooleanField(Object obj, String name, boolean def) {
         try {
