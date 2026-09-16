@@ -29,9 +29,9 @@ public final class TargetMap {
         this.materialFactoryMethod = materialFactoryMethod;
     }
 
-    /** 最新已验证规则（0.2.790.6ca2b9d4）：未知版本默认走这套。 */
+    /** 最新已验证规则（0.2.910.ba19145a）：未知版本默认走这套。 */
     public static final TargetMap LATEST =
-            new TargetMap("bb.x", "xe.h", "q", "xe.b", "c", "e", "d");
+            new TargetMap("bb.b0", "xe.h", "q", "xe.b", "c", "e", "d");
 
     private static final Map<Long, TargetMap> MAP = new HashMap<>();
 
@@ -41,7 +41,8 @@ public final class TargetMap {
         MAP.put(20520L, new TargetMap("bb.t", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.520.3c8e7df7
         MAP.put(20596L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.596.319bcc61
         MAP.put(20599L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.599.905736fd
-        MAP.put(20790L, LATEST); // 0.2.790.6ca2b9d4：helper 改名 bb.x，材质工厂回到 d(Z)
+        MAP.put(20790L, new TargetMap("bb.x", "xe.h", "q", "xe.b", "c", "e", "d")); // 0.2.790.6ca2b9d4
+        MAP.put(20910L, LATEST); // 0.2.910.ba19145a：helper 改名 bb.b0，与 790 同构
     }
 
     /** versionCode 是否在表内精确收录。 */
@@ -112,7 +113,8 @@ public final class TargetMap {
     /** 未知版本形状探测：优先匹配已收录候选，失败时由调用方回退 {@link #LATEST}。 */
     public static TargetMap detectByShape(ClassLoader cl) {
         TargetMap[] candidates = {
-                LATEST, // bb.x @ 0.2.790
+                LATEST, // bb.b0 @ 0.2.910
+                new TargetMap("bb.x", "xe.h", "q", "xe.b", "c", "e", "d"), // 0.2.790
                 new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e"),
                 new TargetMap("bb.s", "xe.h", "q", "xe.b", "c", "e", "d"),
                 new TargetMap("bb.t", "xe.h", "q", "xe.b", "c", "e", "e"),
