@@ -180,7 +180,7 @@ public final class BlurHooks {
 
     // H1a: 0.2.790+ 文字/UI 主题源 —— UiStateManager.u()
     // helper.k 由 IMS 从 u() 拷入；文字色、按键底色都跟 u()。
-    // 锁定深/浅色必须改 u()，只改 helper.k 会出现「浅色底 + 白字」。
+    // 跟随系统也强制跟系统夜间模式，避免输入法皮肤偏好把文字带成白色。
     private static void installUiThemeHook(ClassLoader cl, LogFn logFn, ConfigFn configFn) {
         try {
             Class<?> ui = Class.forName("bb.p1", false, cl);
@@ -190,23 +190,17 @@ public final class BlurHooks {
                 public void intercept(HookInstaller.MethodCall call) {
                     Config cfg = configFn.get();
                     if (!cfg.enable) return;
-                    if (cfg.materialPolicy == Config.POLICY_FORCE_DARK) {
-                        call.setResult(Boolean.TRUE);
-                    } else if (cfg.materialPolicy == Config.POLICY_FORCE_LIGHT) {
-                        call.setResult(Boolean.FALSE);
-                    }
-                    // FOLLOW_SYSTEM：不改写，走原版（主题偏好 + 系统夜间）
+                    call.setResult(resolveWantDark(call.getThisObject(), cfg));
                 }
             });
-            logFn.invoke("H1a UiStateManager.u() policy override installed", null);
+            logFn.invoke("H1a UiStateManager.u() <- policy/system-night", null);
         } catch (Throwable t) {
             logFn.invoke("H1a u() hook skipped (not present?)", t);
         }
     }
 
     // H1b: 材质极性 + 防闪烁
-    // f() 建 View 时按 l 设背景色，b() 才挂材质 —— 入口就要对齐。
-    // FOLLOW_SYSTEM：l 跟 k（k 来自 u()）。锁定深/浅：l 直接用 resolveWantDark。
+    // f() 建 View 时按 l 设背景色，b() 才挂材质 —— 入口与 resolveWantDark 对齐。
     // l() 清材质造成闪烁：enable 时临时摘掉 i 空转。
     private static final ThreadLocal<Object> sLatchedBlurView = new ThreadLocal<>();
 
@@ -221,14 +215,8 @@ public final class BlurHooks {
                     public void intercept(HookInstaller.MethodCall call) {
                         Object thiz = call.getThisObject();
                         if (thiz == null || !configFn.get().enable) return;
-                        Config cfg = configFn.get();
-                        boolean wantDark;
-                        if (cfg.materialPolicy == Config.POLICY_FOLLOW_SYSTEM) {
-                            wantDark = ReflectUtil.getBooleanField(thiz, "k", false);
-                        } else {
-                            wantDark = resolveWantDark(thiz, cfg);
-                        }
-                        ReflectUtil.setBooleanField(thiz, "l", wantDark);
+                        ReflectUtil.setBooleanField(thiz, "l",
+                                resolveWantDark(thiz, configFn.get()));
                     }
                 };
                 Method entry = cls.getDeclaredMethod("f",
