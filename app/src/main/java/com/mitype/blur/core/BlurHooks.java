@@ -26,6 +26,8 @@ public final class BlurHooks {
     /** f() 重建窗口内：View.setBackgroundColor 改透明，避免纯色底闪一下。 */
     private static final ThreadLocal<Boolean> sInBlurSetup = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> sSkipReapply = new ThreadLocal<>();
+    /** setMiuiPhraseThemeFollowInputMethod 上次已注入的 1=浅 / 2=深；相同则跳过，避免发送时主题闪。 */
+    private static volatile Integer sLastImeThemeMode;
 
     public interface LogFn {
         void invoke(String msg, Throwable t);
@@ -43,6 +45,7 @@ public final class BlurHooks {
         installCapabilityBypass(cl, tm, logFn, configFn);   // CAP 解除系统能力校验
         installGateBypassHook(cl, tm, logFn, configFn);     // GATE 解除启用门禁
         installUiThemeHook(cl, logFn, configFn);            // H1a 锁定深/浅色 → UiStateManager.u()
+        installThemeInvokeSkip(logFn, configFn);            // H1c 主题 injector 未变则跳过（防发送闪）
         installStateGateHook(cl, tm, logFn, configFn);      // H1b 材质极性 / 防闪烁
         installMaterialCaptureHook(cl, tm, logFn, configFn); // P1' 材质捕获 + 单次参数写入
         installHapticStyleHook(cl, logFn, configFn);        // H4 触感风格重映射
@@ -209,6 +212,43 @@ public final class BlurHooks {
             logFn.invoke("H1a UiStateManager.u() <- policy/system-night", null);
         } catch (Throwable t) {
             logFn.invoke("H1a u() hook skipped (not present?)", t);
+        }
+    }
+
+    /**
+     * H1c: 每次发送都会 reapplyHyperMaterialState → T() →
+     * InputMethodServiceInjector.setMiuiPhraseThemeFollowInputMethod(1|2)。
+     * 主题未变时仍会重设，框架可能闪一下。相同 mode 直接 skip 原 invoke。
+     */
+    private static void installThemeInvokeSkip(LogFn logFn, ConfigFn configFn) {
+        try {
+            Method invoke = Method.class.getMethod("invoke",
+                    Object.class, Object[].class);
+            HookInstaller.hookBefore(invoke, new HookInstaller.Interceptor() {
+                @Override
+                public void intercept(HookInstaller.MethodCall call) {
+                    if (!configFn.get().enable) return;
+                    Object host = call.getThisObject();
+                    if (!(host instanceof Method)) return;
+                    Method m = (Method) host;
+                    if (!"setMiuiPhraseThemeFollowInputMethod".equals(m.getName())) return;
+                    Object raw = call.getArg(1);
+                    if (!(raw instanceof Object[])) return;
+                    Object[] args = (Object[]) raw;
+                    if (args.length < 1 || !(args[0] instanceof Integer)) return;
+                    Integer mode = (Integer) args[0];
+                    Integer last = sLastImeThemeMode;
+                    if (mode.equals(last)) {
+                        call.setResult(null);
+                        call.skip();
+                        return;
+                    }
+                    sLastImeThemeMode = mode;
+                }
+            });
+            logFn.invoke("H1c theme-invoke skip when mode unchanged", null);
+        } catch (Throwable t) {
+            logFn.invoke("H1c theme-invoke skip failed", t);
         }
     }
 

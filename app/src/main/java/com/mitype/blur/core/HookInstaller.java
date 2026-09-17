@@ -29,6 +29,11 @@ public final class HookInstaller {
         Object getResult();
 
         void setResult(Object result);
+
+        /** before 拦截器可调用以取消原方法执行，直接返回 getResult()。 */
+        void skip();
+
+        boolean isSkipped();
     }
 
     public interface Installer {

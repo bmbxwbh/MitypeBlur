@@ -42,6 +42,9 @@ public class ModuleMain extends XposedModule {
                                 } catch (Throwable t) {
                                     log(Log.WARN, BlurHooks.TAG, "interceptor error", t);
                                 }
+                                if (call.isSkipped()) {
+                                    return call.getResult();
+                                }
                                 return chain.proceed(call.argsArray());
                             } else {
                                 call.setResult(chain.proceed());
@@ -122,6 +125,7 @@ public class ModuleMain extends XposedModule {
         private final XposedInterface.Chain chain;
         private final List<Object> args;
         private Object result;
+        private boolean skipped;
 
         MutableCall(XposedInterface.Chain chain) {
             this.chain = chain;
@@ -160,6 +164,16 @@ public class ModuleMain extends XposedModule {
         @Override
         public void setResult(Object value) {
             result = value;
+        }
+
+        @Override
+        public void skip() {
+            skipped = true;
+        }
+
+        @Override
+        public boolean isSkipped() {
+            return skipped;
         }
     }
 }
