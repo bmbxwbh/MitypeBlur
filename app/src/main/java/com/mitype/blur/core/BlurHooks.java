@@ -46,6 +46,7 @@ public final class BlurHooks {
         installGateBypassHook(cl, tm, logFn, configFn);     // GATE 解除启用门禁
         installUiThemeHook(cl, logFn, configFn);            // H1a 锁定深/浅色 → UiStateManager.u()
         installThemeInvokeSkip(logFn, configFn);            // H1c 主题 injector 未变则跳过（防发送闪）
+        installSkipRedundantReapply(cl, logFn, configFn);   // H1d 已挂载时跳过 reapply（防发送闪）
         installStateGateHook(cl, tm, logFn, configFn);      // H1b 材质极性 / 防闪烁
         installMaterialCaptureHook(cl, tm, logFn, configFn); // P1' 材质捕获 + 单次参数写入
         installHapticStyleHook(cl, logFn, configFn);        // H4 触感风格重映射
@@ -249,6 +250,47 @@ public final class BlurHooks {
             logFn.invoke("H1c theme-invoke skip when mode unchanged", null);
         } catch (Throwable t) {
             logFn.invoke("H1c theme-invoke skip failed", t);
+        }
+    }
+
+    /**
+     * H1d: 点发送会 reapplyHyperMaterialState → o/f/a/T 整段重做。
+     * 模糊 View 已挂在 parent 上时整段 skip，杜绝无意义的 clear/主题/布局闪。
+     */
+    private static void installSkipRedundantReapply(ClassLoader cl, LogFn logFn, ConfigFn configFn) {
+        try {
+            Class<?> ims = Class.forName("com.hyperos.inputmethod.MiInputMethodService", false, cl);
+            for (Method m : ims.getDeclaredMethods()) {
+                String n = m.getName();
+                boolean isReapply = "reapplyHyperMaterialState".equals(n)
+                        || n.contains("applyHyperMaterialRunnable");
+                if (!isReapply || m.getParameterCount() != 1) continue;
+                HookInstaller.hookBefore(m, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        if (!configFn.get().enable) return;
+                        if (isBlurAttached(call.getThisObject())) {
+                            call.setResult(null);
+                            call.skip();
+                        }
+                    }
+                });
+            }
+            logFn.invoke("H1d skip reapply when blur already attached", null);
+        } catch (Throwable t) {
+            logFn.invoke("H1d skip-reapply failed", t);
+        }
+    }
+
+    private static boolean isBlurAttached(Object ims) {
+        Object helper = ReflectUtil.getObjectField(ims, "hyperMaterialHelper");
+        if (helper == null) return false;
+        Object view = ReflectUtil.getObjectField(helper, "i");
+        if (view == null) return false;
+        try {
+            return view.getClass().getMethod("getParent").invoke(view) != null;
+        } catch (Throwable t) {
+            return false;
         }
     }
 
