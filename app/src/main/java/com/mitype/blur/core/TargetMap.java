@@ -68,6 +68,17 @@ public final class TargetMap {
         return null;
     }
 
+    /** 按候选名依次查找任意参数签名方法（兼容 0.2.974 双写字母）。 */
+    public static java.lang.reflect.Method anyArgs(Class<?> c, Class<?>[] params, String... names) {
+        for (String n : names) {
+            try {
+                return c.getDeclaredMethod(n, params);
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
     /** versionCode 是否在表内精确收录。 */
     public static boolean isKnown(long versionCode) {
         return MAP.containsKey(versionCode);

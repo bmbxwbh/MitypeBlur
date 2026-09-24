@@ -409,7 +409,7 @@ public final class BlurHooks {
                                 resolveWantDark(thiz, configFn.get()));
                     }
                 };
-                Method entry = TargetMap.oneArg(cls, new Class<?>[]{
+                Method entry = TargetMap.anyArgs(cls, new Class<?>[]{
                         boolean.class, android.widget.FrameLayout.class, int.class},
                         "f", "ff");
                 if (entry != null) {
@@ -664,7 +664,7 @@ public final class BlurHooks {
         }
         try {
             Class<?> apiCls = Class.forName(tm.blurApiClass, false, cl);
-            Method pass = TargetMap.oneArg(apiCls, new Class<?>[]{
+            Method pass = TargetMap.anyArgs(apiCls, new Class<?>[]{
                     android.view.View.class, boolean.class}, "A", "AA");
             if (pass != null) {
                 final Method pm = pass;
