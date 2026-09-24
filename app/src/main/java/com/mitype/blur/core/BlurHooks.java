@@ -429,6 +429,37 @@ public final class BlurHooks {
                         @Override
                         public void intercept(HookInstaller.MethodCall call) {
                             sInBlurSetup.remove();
+                            Object thiz = call.getThisObject();
+                            if (thiz == null || !configFn.get().enable) return;
+                            final Object view = ReflectUtil.getObjectField(thiz, "i");
+                            if (view == null) return;
+                            final Runnable[] showRef = new Runnable[1];
+                            showRef[0] = new Runnable() {
+                                private int tries;
+
+                                @Override
+                                public void run() {
+                                    try {
+                                        int w = (Integer) view.getClass()
+                                                .getMethod("getWidth").invoke(view);
+                                        int h = (Integer) view.getClass()
+                                                .getMethod("getHeight").invoke(view);
+                                        if (w > 0 && h > 0) {
+                                            view.getClass().getMethod("setVisibility", int.class)
+                                                    .invoke(view, Integer.valueOf(0));
+                                        } else if (++tries < 30) {
+                                            view.getClass().getMethod("post", Runnable.class)
+                                                    .invoke(view, this);
+                                        }
+                                    } catch (Throwable ignored) {
+                                    }
+                                }
+                            };
+                            try {
+                                view.getClass().getMethod("post", Runnable.class)
+                                        .invoke(view, showRef[0]);
+                            } catch (Throwable ignored) {
+                            }
                         }
                     });
                 }
@@ -442,6 +473,15 @@ public final class BlurHooks {
                             Object thiz = call.getThisObject();
                             if (thiz != null) {
                                 lastAppliedPolarity = ReflectUtil.getBooleanField(thiz, "l", false);
+                            }
+                            // 材质挂上后确保可见（f() 内可能因 0 尺寸被我们藏过）
+                            if (!configFn.get().enable) return;
+                            Object view = call.getArgCount() > 0 ? call.getArg(0) : null;
+                            if (view == null) return;
+                            try {
+                                view.getClass().getMethod("setVisibility", int.class)
+                                        .invoke(view, Integer.valueOf(0));
+                            } catch (Throwable ignored) {
                             }
                         }
                     });
