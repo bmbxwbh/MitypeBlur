@@ -476,7 +476,7 @@ public final class BlurHooks {
                             }
                             // 材质挂上后确保可见（f() 内可能因 0 尺寸被我们藏过）
                             if (!configFn.get().enable) return;
-                            Object view = call.getArgCount() > 0 ? call.getArg(0) : null;
+                            Object view = call.argCount() > 0 ? call.getArg(0) : null;
                             if (view == null) return;
                             try {
                                 view.getClass().getMethod("setVisibility", int.class)
