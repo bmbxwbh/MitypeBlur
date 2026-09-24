@@ -3,13 +3,13 @@ package com.mitype.blur.core;
 import java.lang.reflect.Method;
 
 /**
- * Hook 策略（基于 smali 交叉验证修正，支持 0.2.346 ~ 0.2.910）：
- * - CAP: 能力总闸/OS版本解除（详见 installCapabilityBypass），需在其余钩子前安装
- * - GATE: 启用门禁 —— 旧版 h()；0.2.790+ 为 g()
- * - H1a: 锁定深/浅色 hook UiStateManager.u()（bb.p1.u），驱动文字/主题/helper.k
- * - H1b: 材质极性在 f()/b() 入口写 l；l() 摘 View 减少刷新闪烁
- * - P1': helper.d(Z)/e(Z) after —— 材质懒加载单次套用预设（alpha 等比缩放）
- * - R1 已删除：setMiBackgroundBlurRadius 不在键盘模糊管线中
+ * Hook 策略（基于 smali 交叉验证修正，支持 0.2.346 ~ 0.2.974）：
+ * - CAP: 能力总闸/OS版本解除；0.2.974 起方法名双写（cc/ee/qq/dd）
+ * - GATE: 启用门禁 —— 旧版 h()；0.2.790+ 为 g()/gg()
+ * - H1a: 锁定深/浅色 hook UiStateManager.u()（910=bb.p1 / 974=bb.q1）
+ * - H1b: 材质极性在 f/ff、b/bb 入口写 l；l/ll 摘 View 减少闪烁
+ * - P1': 材质工厂 d/dd(Z) after 单次套用预设
+ * - 0.2.974: R8 将单字母方法扩成双字母，查找走 TargetMap.noArg/oneArg
  */
 public final class BlurHooks {
 
@@ -60,9 +60,9 @@ public final class BlurHooks {
      */
     private static boolean isModernHelper(Class<?> helperCls) {
         try {
-            Method g = helperCls.getDeclaredMethod("g");
+            Method g = TargetMap.noArg(helperCls, "g", "gg");
             java.lang.reflect.Field l = helperCls.getDeclaredField("l");
-            return g.getReturnType() == boolean.class && l.getType() == boolean.class;
+            return g != null && g.getReturnType() == boolean.class && l.getType() == boolean.class;
         } catch (Throwable t) {
             return false;
         }
@@ -81,16 +81,19 @@ public final class BlurHooks {
             // 0.2.790+：h() 读字段 f，T(h,g,i) 把 h()=true 当强制深色主题 → 白字。
             // 旧版 h() 才是应用门禁；modern 只 hook g()。
             if (!isModernHelper(cls)) {
-                Method hGate = cls.getDeclaredMethod("h");
-                HookInstaller.hookAfter(hGate, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        if (configFn.get().enable) {
-                            call.setResult(Boolean.TRUE);
+                Method hGate = TargetMap.noArg(cls, "h", "hh");
+                if (hGate != null) {
+                    final Method hg = hGate;
+                    HookInstaller.hookAfter(hg, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            if (configFn.get().enable) {
+                                call.setResult(Boolean.TRUE);
+                            }
                         }
-                    }
-                });
-                logFn.invoke("GATE h()-bypass installed (" + tm.helperClass + ".h)", null);
+                    });
+                    logFn.invoke("GATE h()-bypass installed (" + tm.helperClass + ".h)", null);
+                }
             } else {
                 logFn.invoke("GATE h() skipped on modern helper (theme force-dark flag)", null);
             }
@@ -99,9 +102,10 @@ public final class BlurHooks {
         }
         try {
             Class<?> cls = Class.forName(tm.helperClass, false, cl);
-            Method gGate = cls.getDeclaredMethod("g");
-            if (gGate.getParameterCount() == 0 && gGate.getReturnType() == boolean.class) {
-                HookInstaller.hookAfter(gGate, new HookInstaller.Interceptor() {
+            Method gGate = TargetMap.noArg(cls, "g", "gg");
+            if (gGate != null && gGate.getReturnType() == boolean.class) {
+                final Method gg = gGate;
+                HookInstaller.hookAfter(gg, new HookInstaller.Interceptor() {
                     @Override
                     public void intercept(HookInstaller.MethodCall call) {
                         if (configFn.get().enable) {
@@ -109,7 +113,7 @@ public final class BlurHooks {
                         }
                     }
                 });
-                logFn.invoke("GATE g()-bypass installed (" + tm.helperClass + ".g)", null);
+                logFn.invoke("GATE g()-bypass installed (" + tm.helperClass + "." + gg.getName() + ")", null);
             }
         } catch (Throwable t) {
             logFn.invoke("GATE g()-bypass skipped (not present in this version)", t);
@@ -200,9 +204,26 @@ public final class BlurHooks {
     // 跟随系统也强制跟系统夜间模式，避免输入法皮肤偏好把文字带成白色。
     private static void installUiThemeHook(ClassLoader cl, LogFn logFn, ConfigFn configFn) {
         try {
-            Class<?> ui = Class.forName("bb.p1", false, cl);
-            Method u = ui.getDeclaredMethod("u");
-            HookInstaller.hookAfter(u, new HookInstaller.Interceptor() {
+            // 0.2.910=bb.p1；0.2.974=bb.q1；方法 u（974 仍单字母）
+            Class<?> ui = null;
+            for (String n : new String[]{"bb.q1", "bb.p1"}) {
+                try {
+                    ui = Class.forName(n, false, cl);
+                    break;
+                } catch (Throwable ignored) {
+                }
+            }
+            if (ui == null) {
+                logFn.invoke("H1a UiStateManager class not found", null);
+                return;
+            }
+            Method u = TargetMap.noArg(ui, "u", "uu");
+            if (u == null) {
+                logFn.invoke("H1a u() not found on " + ui.getName(), null);
+                return;
+            }
+            final Method uu = u;
+            HookInstaller.hookAfter(uu, new HookInstaller.Interceptor() {
                 @Override
                 public void intercept(HookInstaller.MethodCall call) {
                     Config cfg = configFn.get();
@@ -210,7 +231,7 @@ public final class BlurHooks {
                     call.setResult(resolveWantDark(call.getThisObject(), cfg));
                 }
             });
-            logFn.invoke("H1a UiStateManager.u() <- policy/system-night", null);
+            logFn.invoke("H1a UiStateManager.u() <- policy/system-night (" + ui.getName() + ")", null);
         } catch (Throwable t) {
             logFn.invoke("H1a u() hook skipped (not present?)", t);
         }
@@ -265,7 +286,8 @@ public final class BlurHooks {
                 boolean isReapply = "reapplyHyperMaterialState".equals(n)
                         || n.contains("applyHyperMaterialRunnable");
                 if (!isReapply || m.getParameterCount() != 1) continue;
-                HookInstaller.hookBefore(m, new HookInstaller.Interceptor() {
+                final Method rm = m;
+                HookInstaller.hookBefore(rm, new HookInstaller.Interceptor() {
                     @Override
                     public void intercept(HookInstaller.MethodCall call) {
                         if (!configFn.get().enable) return;
@@ -301,12 +323,13 @@ public final class BlurHooks {
     /**
      * HyperChanger 同款：k()/j() 会按云端白名单决定是否保留材质 View。
      * 把当前包强制写入 versions=2 与 dark/light 集合，避免发送/切编辑器时 View 被删再挂（闪）。
-     * 字段别名兼容 bb.u/t/x/b0 各构建。
+     * 兼容 bb.u/t/x/b0 各构建字段漂移（910: t/u/v/w → 974: u/v/w/x）。
      */
+    @SuppressWarnings("unchecked")
     private static void forcePackageWhitelist(Object helper) {
         try {
             String pkg = null;
-            for (String n : new String[]{"t", "v", "u"}) {
+            for (String n : new String[]{"t", "u", "v"}) {
                 Object o = ReflectUtil.getObjectField(helper, n);
                 if (o instanceof String && !((String) o).isEmpty()) {
                     pkg = (String) o;
@@ -315,11 +338,10 @@ public final class BlurHooks {
             }
             if (pkg == null) return;
 
-            // packageMaterialVersions: Map pkg → 2
-            for (String n : new String[]{"u", "w"}) {
+            // packageMaterialVersions: 第一个 Map 字段
+            for (String n : new String[]{"u", "v", "w"}) {
                 Object m = ReflectUtil.getObjectField(helper, n);
                 if (m instanceof java.util.Map) {
-                    @SuppressWarnings("unchecked")
                     java.util.Map<Object, Object> map = (java.util.Map<Object, Object>) m;
                     Object cur = map.get(pkg);
                     if (!(cur instanceof Integer) || ((Integer) cur) > 2) {
@@ -331,13 +353,25 @@ public final class BlurHooks {
                 }
             }
 
+            // 两个 Set：dark / light。已知对 (v,w) 或 (w,x)
+            String setA = null, setB = null;
+            for (String n : new String[]{"v", "w", "x", "y"}) {
+                if (ReflectUtil.getObjectField(helper, n) instanceof java.util.Set) {
+                    if (setA == null) setA = n;
+                    else if (setB == null) {
+                        setB = n;
+                        break;
+                    }
+                }
+            }
+            if (setA == null || setB == null) return;
+            String darkSet = setA; // v→dark(910) / w→dark(974 当 A=w,B=x)
+            String lightSet = setB;
+            // 974 第一个 Set 是 w（dark）、第二个 x（light）——与 setA/setB 顺序一致
+
             boolean dark = ReflectUtil.getBooleanField(helper, "l", false);
-            // bb.b0: v=dark packages, w=light packages；当前包只放进匹配极性的一侧
-            addToSetField(helper, dark ? "v" : "w", pkg, true);
-            addToSetField(helper, dark ? "w" : "v", pkg, false);
-            // 别名 x/y（部分构建）
-            addToSetField(helper, dark ? "x" : "y", pkg, true);
-            addToSetField(helper, dark ? "y" : "x", pkg, false);
+            addToSetField(helper, dark ? darkSet : lightSet, pkg, true);
+            addToSetField(helper, dark ? lightSet : darkSet, pkg, false);
         } catch (Throwable ignored) {
         }
     }
@@ -375,96 +409,110 @@ public final class BlurHooks {
                                 resolveWantDark(thiz, configFn.get()));
                     }
                 };
-                Method entry = cls.getDeclaredMethod("f",
-                        boolean.class, android.widget.FrameLayout.class, int.class);
-                HookInstaller.hookBefore(entry, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        sInBlurSetup.set(Boolean.TRUE);
-                        Object thiz = call.getThisObject();
-                        if (thiz != null && configFn.get().enable) {
-                            ReflectUtil.setBooleanField(thiz, "l",
-                                    resolveWantDark(thiz, configFn.get()));
+                Method entry = TargetMap.oneArg(cls, new Class<?>[]{
+                        boolean.class, android.widget.FrameLayout.class, int.class},
+                        "f", "ff");
+                if (entry != null) {
+                    final Method fe = entry;
+                    HookInstaller.hookBefore(fe, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            sInBlurSetup.set(Boolean.TRUE);
+                            Object thiz = call.getThisObject();
+                            if (thiz != null && configFn.get().enable) {
+                                ReflectUtil.setBooleanField(thiz, "l",
+                                        resolveWantDark(thiz, configFn.get()));
+                            }
                         }
-                    }
-                });
-                HookInstaller.hookAfter(entry, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        sInBlurSetup.remove();
-                    }
-                });
-                Method apply = cls.getDeclaredMethod("b", android.view.View.class);
-                HookInstaller.hookBefore(apply, alignPolarity);
-                HookInstaller.hookAfter(apply, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        Object thiz = call.getThisObject();
-                        if (thiz != null) {
-                            lastAppliedPolarity = ReflectUtil.getBooleanField(thiz, "l", false);
+                    });
+                    HookInstaller.hookAfter(fe, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            sInBlurSetup.remove();
                         }
-                    }
-                });
-                // k() 同极性重挂 = clear+apply 闪一下；用 o 旗标整段跳过
-                // HyperChanger：k() 在包不在白名单时会删掉材质 View → 先写白名单再跑
-                Method reapply = cls.getDeclaredMethod("k");
-                HookInstaller.hookBefore(reapply, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        Object thiz = call.getThisObject();
-                        if (thiz == null || !configFn.get().enable) return;
-                        forcePackageWhitelist(thiz);
-                        boolean l = ReflectUtil.getBooleanField(thiz, "l", false);
-                        Object view = ReflectUtil.getObjectField(thiz, "i");
-                        if (view != null && lastAppliedPolarity != null
-                                && lastAppliedPolarity == l) {
-                            ReflectUtil.setBooleanField(thiz, "o", true);
-                            sSkipReapply.set(Boolean.TRUE);
+                    });
+                }
+                Method apply = TargetMap.oneArg(cls, android.view.View.class, "b", "bb");
+                if (apply != null) {
+                    final Method ap = apply;
+                    HookInstaller.hookBefore(ap, alignPolarity);
+                    HookInstaller.hookAfter(ap, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            Object thiz = call.getThisObject();
+                            if (thiz != null) {
+                                lastAppliedPolarity = ReflectUtil.getBooleanField(thiz, "l", false);
+                            }
                         }
-                    }
-                });
-                HookInstaller.hookAfter(reapply, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        Object thiz = call.getThisObject();
-                        if (Boolean.TRUE.equals(sSkipReapply.get()) && thiz != null) {
-                            ReflectUtil.setBooleanField(thiz, "o", false);
+                    });
+                }
+                // k()/kk() 同极性重挂跳过 + 白名单
+                Method reapply = TargetMap.noArg(cls, "k", "kk");
+                if (reapply != null) {
+                    final Method kr = reapply;
+                    HookInstaller.hookBefore(kr, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            Object thiz = call.getThisObject();
+                            if (thiz == null || !configFn.get().enable) return;
+                            forcePackageWhitelist(thiz);
+                            boolean l = ReflectUtil.getBooleanField(thiz, "l", false);
+                            Object view = ReflectUtil.getObjectField(thiz, "i");
+                            if (view != null && lastAppliedPolarity != null
+                                    && lastAppliedPolarity == l) {
+                                ReflectUtil.setBooleanField(thiz, "o", true);
+                                sSkipReapply.set(Boolean.TRUE);
+                            }
                         }
-                        sSkipReapply.remove();
-                    }
-                });
-                // j() 会重算包白名单；先写入当前包，避免材质被摘掉
-                Method recompute = cls.getDeclaredMethod("j");
-                HookInstaller.hookBefore(recompute, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        Object thiz = call.getThisObject();
-                        if (thiz == null || !configFn.get().enable) return;
-                        forcePackageWhitelist(thiz);
-                    }
-                });
-                Method cleanup = cls.getDeclaredMethod("l");
-                HookInstaller.hookBefore(cleanup, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        Object thiz = call.getThisObject();
-                        if (thiz == null || !configFn.get().enable) return;
-                        Object view = ReflectUtil.getObjectField(thiz, "i");
-                        sLatchedBlurView.set(view);
-                        ReflectUtil.setObjectField(thiz, "i", null);
-                    }
-                });
-                HookInstaller.hookAfter(cleanup, new HookInstaller.Interceptor() {
-                    @Override
-                    public void intercept(HookInstaller.MethodCall call) {
-                        Object thiz = call.getThisObject();
-                        Object view = sLatchedBlurView.get();
-                        sLatchedBlurView.remove();
-                        if (thiz != null && view != null) {
-                            ReflectUtil.setObjectField(thiz, "i", view);
+                    });
+                    HookInstaller.hookAfter(kr, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            Object thiz = call.getThisObject();
+                            if (Boolean.TRUE.equals(sSkipReapply.get()) && thiz != null) {
+                                ReflectUtil.setBooleanField(thiz, "o", false);
+                            }
+                            sSkipReapply.remove();
                         }
-                    }
-                });
+                    });
+                }
+                Method recompute = TargetMap.noArg(cls, "j", "jj");
+                if (recompute != null) {
+                    final Method jr = recompute;
+                    HookInstaller.hookBefore(jr, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            Object thiz = call.getThisObject();
+                            if (thiz == null || !configFn.get().enable) return;
+                            forcePackageWhitelist(thiz);
+                        }
+                    });
+                }
+                Method cleanup = TargetMap.noArg(cls, "l", "ll");
+                if (cleanup != null) {
+                    final Method lc = cleanup;
+                    HookInstaller.hookBefore(lc, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            Object thiz = call.getThisObject();
+                            if (thiz == null || !configFn.get().enable) return;
+                            Object view = ReflectUtil.getObjectField(thiz, "i");
+                            sLatchedBlurView.set(view);
+                            ReflectUtil.setObjectField(thiz, "i", null);
+                        }
+                    });
+                    HookInstaller.hookAfter(lc, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            Object thiz = call.getThisObject();
+                            Object view = sLatchedBlurView.get();
+                            sLatchedBlurView.remove();
+                            if (thiz != null && view != null) {
+                                ReflectUtil.setObjectField(thiz, "i", view);
+                            }
+                        }
+                    });
+                }
                 // f() 窗口内新 View：0 尺寸时 INVISIBLE（HyperChanger），避免空窗露底/压暗
                 try {
                     Method setBg = android.view.View.class.getDeclaredMethod(
@@ -590,9 +638,12 @@ public final class BlurHooks {
             Class<?> capCls = Class.forName(tm.capabilityClass, false, cl);
             String pkg = tm.blurApiClass.substring(0, tm.blurApiClass.lastIndexOf('.'));
             Class<?> matCls = Class.forName(pkg + ".e", false, cl);
-            Method apply = capCls.getDeclaredMethod("a",
-                    android.view.View.class, matCls);
-            HookInstaller.hookBefore(apply, new HookInstaller.Interceptor() {
+            Method apply = TargetMap.oneArg(capCls, android.view.View.class, "a", "aa");
+            if (apply == null) {
+                throw new NoSuchMethodException("xe.b.a/aa");
+            }
+            final Method applyM = apply;
+            HookInstaller.hookBefore(applyM, new HookInstaller.Interceptor() {
                 @Override
                 public void intercept(HookInstaller.MethodCall call) {
                     if (!configFn.get().enable) return;
@@ -607,24 +658,27 @@ public final class BlurHooks {
                     }
                 }
             });
-            logFn.invoke("ANTI-FLASH material-clear substitute installed", null);
+            logFn.invoke("ANTI-FLASH material-clear substitute installed (" + applyM.getName() + ")", null);
         } catch (Throwable t) {
             logFn.invoke("ANTI-FLASH material-clear skip failed", t);
         }
         try {
             Class<?> apiCls = Class.forName(tm.blurApiClass, false, cl);
-            Method pass = apiCls.getDeclaredMethod("A",
-                    android.view.View.class, boolean.class);
-            HookInstaller.hookBefore(pass, new HookInstaller.Interceptor() {
-                @Override
-                public void intercept(HookInstaller.MethodCall call) {
-                    if (!configFn.get().enable) return;
-                    if (Boolean.FALSE.equals(call.getArg(1))) {
-                        call.setArg(1, Boolean.TRUE);
+            Method pass = TargetMap.oneArg(apiCls, new Class<?>[]{
+                    android.view.View.class, boolean.class}, "A", "AA");
+            if (pass != null) {
+                final Method pm = pass;
+                HookInstaller.hookBefore(pm, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        if (!configFn.get().enable) return;
+                        if (Boolean.FALSE.equals(call.getArg(1))) {
+                            call.setArg(1, Boolean.TRUE);
+                        }
                     }
-                }
-            });
-            logFn.invoke("ANTI-FLASH pass-window disable blocked", null);
+                });
+                logFn.invoke("ANTI-FLASH pass-window disable blocked (" + pm.getName() + ")", null);
+            }
         } catch (Throwable t) {
             logFn.invoke("ANTI-FLASH pass-window skip failed", t);
         }

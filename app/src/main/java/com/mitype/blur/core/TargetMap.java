@@ -29,9 +29,9 @@ public final class TargetMap {
         this.materialFactoryMethod = materialFactoryMethod;
     }
 
-    /** 最新已验证规则（0.2.910.ba19145a）：未知版本默认走这套。 */
+    /** 最新已验证规则（0.2.974.1cbd12c2）：R8 单字母→双字母；未知版本默认走这套。 */
     public static final TargetMap LATEST =
-            new TargetMap("bb.b0", "xe.h", "q", "xe.b", "c", "e", "d");
+            new TargetMap("bb.b0", "xe.h", "qq", "xe.b", "cc", "ee", "dd");
 
     private static final Map<Long, TargetMap> MAP = new HashMap<>();
 
@@ -42,7 +42,30 @@ public final class TargetMap {
         MAP.put(20596L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.596.319bcc61
         MAP.put(20599L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.599.905736fd
         MAP.put(20790L, new TargetMap("bb.x", "xe.h", "q", "xe.b", "c", "e", "d")); // 0.2.790.6ca2b9d4
-        MAP.put(20910L, LATEST); // 0.2.910.ba19145a：helper 改名 bb.b0，与 790 同构
+        MAP.put(20910L, new TargetMap("bb.b0", "xe.h", "q", "xe.b", "c", "e", "d")); // 0.2.910.ba19145a
+        MAP.put(20974L, LATEST); // 0.2.974.1cbd12c2：方法名双写 dd/cc/ee/qq，UiState=bb.q1
+    }
+
+    /** 按候选名依次查找无参方法（兼容 0.2.974 双写字母）。 */
+    public static java.lang.reflect.Method noArg(Class<?> c, String... names) {
+        for (String n : names) {
+            try {
+                return c.getDeclaredMethod(n);
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    /** 按候选名依次查找单参方法。 */
+    public static java.lang.reflect.Method oneArg(Class<?> c, Class<?> p0, String... names) {
+        for (String n : names) {
+            try {
+                return c.getDeclaredMethod(n, p0);
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
     }
 
     /** versionCode 是否在表内精确收录。 */
@@ -59,15 +82,20 @@ public final class TargetMap {
         return m != null ? m : LATEST;
     }
 
-    /** 形状校验：确认 helper 类具备本模块依赖的全部成员。 */
+    /** 形状校验：确认 helper 类具备本模块依赖的全部成员（兼容 l/ll 单双字母）。 */
     public static boolean shapeOk(Class<?> c) {
         try {
-            c.getDeclaredMethod("l");
-            for (String f : new String[]{"d", "e", "f", "k"}) {
-                c.getDeclaredField(f);
+            if (noArg(c, "l", "ll") == null) return false;
+            for (String f : new String[]{"d", "e", "f", "k", "l"}) {
+                try {
+                    c.getDeclaredField(f);
+                } catch (Throwable t) {
+                    // l 必须在；其余字段名可能漂移但 d/e/f 仍常见
+                    if (!"l".equals(f)) continue;
+                    return false;
+                }
             }
-            // 材质工厂方法可能叫 d 或 e；返回类型名形如 zg.e / xxx.e
-            boolean hasFactory = false;
+            // 材质工厂：单参 boolean，返回 zg.e 类
             for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
                 if (m.getParameterTypes().length == 1
                         && m.getParameterTypes()[0] == boolean.class
@@ -75,21 +103,21 @@ public final class TargetMap {
                         && !m.getReturnType().equals(boolean.class)
                         && m.getReturnType().getName().endsWith(".e")
                         && java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
-                    hasFactory = true;
-                    break;
+                    return true;
                 }
             }
-            return hasFactory;
+            return false;
         } catch (Throwable t) {
             return false;
         }
     }
 
-    /** 形状校验：确认能力类具备无参静态 boolean 总闸（已知版本同名 "c"）。 */
+    /** 形状校验：能力类无参静态 boolean（c 或 cc）。 */
     public static boolean capShapeOk(Class<?> c) {
         try {
-            java.lang.reflect.Method m = c.getDeclaredMethod("c");
-            return m.getReturnType() == boolean.class
+            java.lang.reflect.Method m = noArg(c, "c", "cc");
+            return m != null
+                    && m.getReturnType() == boolean.class
                     && java.lang.reflect.Modifier.isStatic(m.getModifiers());
         } catch (Throwable t) {
             return false;
@@ -113,7 +141,8 @@ public final class TargetMap {
     /** 未知版本形状探测：优先匹配已收录候选，失败时由调用方回退 {@link #LATEST}。 */
     public static TargetMap detectByShape(ClassLoader cl) {
         TargetMap[] candidates = {
-                LATEST, // bb.b0 @ 0.2.910
+                LATEST, // bb.b0 + dd/cc/ee/qq @ 0.2.974
+                new TargetMap("bb.b0", "xe.h", "q", "xe.b", "c", "e", "d"), // 0.2.910 单字母
                 new TargetMap("bb.x", "xe.h", "q", "xe.b", "c", "e", "d"), // 0.2.790
                 new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e"),
                 new TargetMap("bb.s", "xe.h", "q", "xe.b", "c", "e", "d"),
