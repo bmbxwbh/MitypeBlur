@@ -288,10 +288,71 @@ public final class BlurHooks {
         Object view = ReflectUtil.getObjectField(helper, "i");
         if (view == null) return false;
         try {
-            return view.getClass().getMethod("getParent").invoke(view) != null;
+            if (view.getClass().getMethod("getParent").invoke(view) == null) return false;
+            int w = (Integer) view.getClass().getMethod("getWidth").invoke(view);
+            int h = (Integer) view.getClass().getMethod("getHeight").invoke(view);
+            // 0 尺寸不算「已挂好」，仍允许 reapply 走完整高度落地
+            return w > 0 && h > 0;
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /**
+     * HyperChanger 同款：k()/j() 会按云端白名单决定是否保留材质 View。
+     * 把当前包强制写入 versions=2 与 dark/light 集合，避免发送/切编辑器时 View 被删再挂（闪）。
+     * 字段别名兼容 bb.u/t/x/b0 各构建。
+     */
+    private static void forcePackageWhitelist(Object helper) {
+        try {
+            String pkg = null;
+            for (String n : new String[]{"t", "v", "u"}) {
+                Object o = ReflectUtil.getObjectField(helper, n);
+                if (o instanceof String && !((String) o).isEmpty()) {
+                    pkg = (String) o;
+                    break;
+                }
+            }
+            if (pkg == null) return;
+
+            // packageMaterialVersions: Map pkg → 2
+            for (String n : new String[]{"u", "w"}) {
+                Object m = ReflectUtil.getObjectField(helper, n);
+                if (m instanceof java.util.Map) {
+                    @SuppressWarnings("unchecked")
+                    java.util.Map<Object, Object> map = (java.util.Map<Object, Object>) m;
+                    Object cur = map.get(pkg);
+                    if (!(cur instanceof Integer) || ((Integer) cur) > 2) {
+                        java.util.Map<Object, Object> copy = new java.util.LinkedHashMap<>(map);
+                        copy.put(pkg, 2);
+                        ReflectUtil.setObjectField(helper, n, copy);
+                    }
+                    break;
+                }
+            }
+
+            boolean dark = ReflectUtil.getBooleanField(helper, "l", false);
+            // bb.b0: v=dark packages, w=light packages；当前包只放进匹配极性的一侧
+            addToSetField(helper, dark ? "v" : "w", pkg, true);
+            addToSetField(helper, dark ? "w" : "v", pkg, false);
+            // 别名 x/y（部分构建）
+            addToSetField(helper, dark ? "x" : "y", pkg, true);
+            addToSetField(helper, dark ? "y" : "x", pkg, false);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void addToSetField(Object helper, String name, String pkg, boolean add) {
+        Object set = ReflectUtil.getObjectField(helper, name);
+        if (!(set instanceof java.util.Set)) return;
+        java.util.Set<Object> copy = new java.util.LinkedHashSet<>((java.util.Set<Object>) set);
+        if (add) {
+            copy.add(pkg);
+        } else {
+            copy.remove(pkg);
+        }
+        ReflectUtil.setObjectField(helper, name, copy);
     }
 
     // H1b: 材质极性 + 防闪烁
@@ -345,12 +406,14 @@ public final class BlurHooks {
                     }
                 });
                 // k() 同极性重挂 = clear+apply 闪一下；用 o 旗标整段跳过
+                // HyperChanger：k() 在包不在白名单时会删掉材质 View → 先写白名单再跑
                 Method reapply = cls.getDeclaredMethod("k");
                 HookInstaller.hookBefore(reapply, new HookInstaller.Interceptor() {
                     @Override
                     public void intercept(HookInstaller.MethodCall call) {
                         Object thiz = call.getThisObject();
                         if (thiz == null || !configFn.get().enable) return;
+                        forcePackageWhitelist(thiz);
                         boolean l = ReflectUtil.getBooleanField(thiz, "l", false);
                         Object view = ReflectUtil.getObjectField(thiz, "i");
                         if (view != null && lastAppliedPolarity != null
@@ -368,6 +431,16 @@ public final class BlurHooks {
                             ReflectUtil.setBooleanField(thiz, "o", false);
                         }
                         sSkipReapply.remove();
+                    }
+                });
+                // j() 会重算包白名单；先写入当前包，避免材质被摘掉
+                Method recompute = cls.getDeclaredMethod("j");
+                HookInstaller.hookBefore(recompute, new HookInstaller.Interceptor() {
+                    @Override
+                    public void intercept(HookInstaller.MethodCall call) {
+                        Object thiz = call.getThisObject();
+                        if (thiz == null || !configFn.get().enable) return;
+                        forcePackageWhitelist(thiz);
                     }
                 });
                 Method cleanup = cls.getDeclaredMethod("l");
@@ -392,7 +465,7 @@ public final class BlurHooks {
                         }
                     }
                 });
-                // f() 窗口内新 View 的纯色底 → 透明，避免「压暗」一帧
+                // f() 窗口内新 View：0 尺寸时 INVISIBLE（HyperChanger），避免空窗露底/压暗
                 try {
                     Method setBg = android.view.View.class.getDeclaredMethod(
                             "setBackgroundColor", int.class);
@@ -400,12 +473,23 @@ public final class BlurHooks {
                         @Override
                         public void intercept(HookInstaller.MethodCall call) {
                             if (!configFn.get().enable) return;
-                            if (Boolean.TRUE.equals(sInBlurSetup.get())) {
-                                call.setArg(0, Integer.valueOf(0));
+                            if (!Boolean.TRUE.equals(sInBlurSetup.get())) return;
+                            Object view = call.getThisObject();
+                            // 尚未 layout：先藏起来，等有尺寸再显示
+                            try {
+                                Integer w = (Integer) view.getClass()
+                                        .getMethod("getWidth").invoke(view);
+                                Integer h = (Integer) view.getClass()
+                                        .getMethod("getHeight").invoke(view);
+                                if (w != null && h != null && (w <= 0 || h <= 0)) {
+                                    view.getClass().getMethod("setVisibility", int.class)
+                                            .invoke(view, Integer.valueOf(4)); // INVISIBLE
+                                }
+                            } catch (Throwable ignored) {
                             }
                         }
                     });
-                    logFn.invoke("ANTI-FLASH f() solid bg → transparent", null);
+                    logFn.invoke("ANTI-FLASH hide zero-size blur view (HyperChanger)", null);
                 } catch (Throwable t) {
                     logFn.invoke("ANTI-FLASH bg hook failed", t);
                 }
