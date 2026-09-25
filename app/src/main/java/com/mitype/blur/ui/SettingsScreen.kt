@@ -13,6 +13,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -23,8 +24,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.ComponentName
+import android.content.pm.PackageManager
 import com.mitype.blur.core.Config
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -54,6 +58,16 @@ fun SettingsScreen(
         var materialPolicy by remember(prefs) { mutableIntStateOf(prefs?.getInt(Config.KEY_MATERIAL_POLICY, Config.DEFAULT_MATERIAL_POLICY) ?: Config.DEFAULT_MATERIAL_POLICY) }
         var hapticPreset by remember(prefs) { mutableIntStateOf(prefs?.getInt(Config.KEY_HAPTIC_PRESET, Config.DEFAULT_HAPTIC_PRESET) ?: Config.DEFAULT_HAPTIC_PRESET) }
         var keySound by remember(prefs) { mutableStateOf(prefs?.getBoolean(Config.KEY_KEY_SOUND, Config.DEFAULT_KEY_SOUND) ?: Config.DEFAULT_KEY_SOUND) }
+        var hideIcon by remember(prefs) { mutableStateOf(prefs?.getBoolean(Config.KEY_HIDE_ICON, Config.DEFAULT_HIDE_ICON) ?: Config.DEFAULT_HIDE_ICON) }
+        val appContext = LocalContext.current
+        fun applyHideIcon(hide: Boolean) {
+            try {
+                val cn = ComponentName(appContext.packageName, ".ui.LauncherAlias")
+                val state = if (hide) PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                else PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                appContext.packageManager.setComponentEnabledSetting(cn, state, PackageManager.DONT_KILL_APP)
+            } catch (_: Exception) {}
+        }
         var bypassCheck by remember(prefs) { mutableStateOf(prefs?.getBoolean(Config.KEY_BYPASS_VERSION_CHECK, Config.DEFAULT_BYPASS_VERSION_CHECK) ?: Config.DEFAULT_BYPASS_VERSION_CHECK) }
         var devMode by remember(prefs) { mutableStateOf(prefs?.getBoolean(Config.KEY_DEV_MODE, false) ?: false) }
         val baseCfg = remember(prefs) { Config.load(prefs) }
@@ -149,6 +163,27 @@ fun SettingsScreen(
                                 enabled = connected
                             )
                         }
+                    }
+                }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        SwitchPreference(
+                            checked = hideIcon,
+                            onCheckedChange = {
+                                hideIcon = it
+                                save { s -> s.putBoolean(Config.KEY_HIDE_ICON, it) }
+                                applyHideIcon(it)
+                            },
+                            title = "隐藏桌面图标",
+                            summary = "从桌面移除模块图标；仍可从输入法设置「MitypeBlur 模块」进入",
+                            startAction = {
+                                Icon(
+                                    if (hideIcon) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                    contentDescription = null
+                                )
+                            },
+                            enabled = true
+                        )
                     }
                 }
 
@@ -341,6 +376,7 @@ fun SettingsScreen(
                                     editor.putInt(Config.KEY_MATERIAL_POLICY, Config.DEFAULT_MATERIAL_POLICY)
                                     editor.putInt(Config.KEY_HAPTIC_PRESET, Config.DEFAULT_HAPTIC_PRESET)
                                     editor.putBoolean(Config.KEY_KEY_SOUND, Config.DEFAULT_KEY_SOUND)
+                                    editor.putBoolean(Config.KEY_HIDE_ICON, Config.DEFAULT_HIDE_ICON)
                                     editor.putBoolean(Config.KEY_BYPASS_VERSION_CHECK, Config.DEFAULT_BYPASS_VERSION_CHECK)
                                     editor.putBoolean(Config.KEY_DEV_MODE, false)
                                     editor.remove("frost_alpha")
@@ -358,6 +394,8 @@ fun SettingsScreen(
                                 materialPolicy = Config.DEFAULT_MATERIAL_POLICY
                                 hapticPreset = Config.DEFAULT_HAPTIC_PRESET
                                 keySound = Config.DEFAULT_KEY_SOUND
+                                hideIcon = Config.DEFAULT_HIDE_ICON
+                                applyHideIcon(Config.DEFAULT_HIDE_ICON)
                                 bypassCheck = Config.DEFAULT_BYPASS_VERSION_CHECK
                                 devMode = false
                                 devColor = baseCfg.effColorScale()

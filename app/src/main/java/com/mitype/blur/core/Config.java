@@ -23,6 +23,9 @@ public final class Config {
     /** 按键音：用模块内置微信风格 wav 替换系统 playSoundEffect。 */
     public static final String KEY_KEY_SOUND = "key_sound";
     public static final boolean DEFAULT_KEY_SOUND = true;
+    /** 隐藏桌面图标（activity-alias 开关）。 */
+    public static final String KEY_HIDE_ICON = "hide_icon";
+    public static final boolean DEFAULT_HIDE_ICON = false;
     public static final String KEY_BYPASS_VERSION_CHECK = "bypass_version_check";
 
     /** 开发者模式：总开关 + 细参覆盖（值 <0/=false 表示跟随预设或不干预）。 */
@@ -73,6 +76,7 @@ public final class Config {
     public int materialPolicy = DEFAULT_MATERIAL_POLICY;
     public int hapticPreset = DEFAULT_HAPTIC_PRESET;
     public boolean keySound = DEFAULT_KEY_SOUND;
+    public boolean hideIcon = DEFAULT_HIDE_ICON;
     public boolean bypassVersionCheck = DEFAULT_BYPASS_VERSION_CHECK;
 
     public boolean devMode = DEFAULT_DEV_MODE;
@@ -94,6 +98,7 @@ public final class Config {
             c.materialPolicy = sp.getInt(KEY_MATERIAL_POLICY, DEFAULT_MATERIAL_POLICY);
             c.hapticPreset = sp.getInt(KEY_HAPTIC_PRESET, DEFAULT_HAPTIC_PRESET);
             c.keySound = sp.getBoolean(KEY_KEY_SOUND, DEFAULT_KEY_SOUND);
+            c.hideIcon = sp.getBoolean(KEY_HIDE_ICON, DEFAULT_HIDE_ICON);
             c.bypassVersionCheck = sp.getBoolean(KEY_BYPASS_VERSION_CHECK, DEFAULT_BYPASS_VERSION_CHECK);
             c.devMode = sp.getBoolean(KEY_DEV_MODE, DEFAULT_DEV_MODE);
             c.devColorScale = sp.getFloat(KEY_DEV_COLOR_SCALE, DEFAULT_DEV_OVERRIDE);

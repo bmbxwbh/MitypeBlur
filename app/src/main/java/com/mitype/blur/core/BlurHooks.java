@@ -1,5 +1,6 @@
 package com.mitype.blur.core;
 
+import android.content.Intent;
 import android.media.AudioManager;
 
 import java.lang.reflect.Method;
@@ -53,6 +54,7 @@ public final class BlurHooks {
         installMaterialCaptureHook(cl, tm, logFn, configFn); // P1' 材质捕获 + 单次参数写入
         installHapticStyleHook(cl, logFn, configFn);        // H4 触感风格重映射
         installKeySoundHook(cl, logFn, configFn);         // HS 按键音替换
+        installImeSettingsEntry(cl, logFn);               // IME 设置首页 → 模块入口
         installStrokeUniformHook(cl, logFn, configFn);      // DEV 描边着色器细参
         installCandidateSoftenHook(cl, logFn, configFn);   // SOFT 候选词蓝光柔化
     }
@@ -289,7 +291,6 @@ public final class BlurHooks {
 
     private static AudioManager audioFromService(Object ims) {
         try {
-            // MiInputMethodService 继承 InputMethodService，有 getSystemService
             java.lang.reflect.Method m = ims.getClass().getMethod(
                     "getSystemService", String.class);
             Object am = m.invoke(ims, android.content.Context.AUDIO_SERVICE);
@@ -305,6 +306,154 @@ public final class BlurHooks {
         } catch (Throwable ignored) {
         }
         return null;
+    }
+
+    private static final String PREF_KEY_MITYPE = "mitype_blur_home";
+
+    /**
+     * IME 设置首页（eb.c0）加载 settings_preferences 后，插入与 about 同风格的
+     * 「MitypeBlur 模块」入口，点击打开模块 Activity。
+     */
+    private static void installImeSettingsEntry(ClassLoader cl, LogFn logFn) {
+        try {
+            Class<?> frag = Class.forName("eb.c0", false, cl);
+            Method h = frag.getDeclaredMethod("h", String.class);
+            final Method hm = h;
+            HookInstaller.hookAfter(hm, new HookInstaller.Interceptor() {
+                @Override
+                public void intercept(HookInstaller.MethodCall call) {
+                    try {
+                        addMitypePreference(call.getThisObject(), cl);
+                    } catch (Throwable t) {
+                        logFn.invoke("IME entry add failed", t);
+                    }
+                }
+            });
+            logFn.invoke("IME settings entry hooked (eb.c0.h)", null);
+        } catch (Throwable t) {
+            logFn.invoke("IME settings entry hook skipped", t);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void addMitypePreference(Object fragment, ClassLoader cl) throws Exception {
+        java.lang.reflect.Method getScreen = null;
+        Class<?> c = fragment.getClass();
+        while (c != null && getScreen == null) {
+            try {
+                getScreen = c.getDeclaredMethod("getPreferenceScreen");
+            } catch (Throwable ignored) {
+                c = c.getSuperclass();
+            }
+        }
+        if (getScreen == null) return;
+        getScreen.setAccessible(true);
+        Object screen = getScreen.invoke(fragment);
+        if (!(screen instanceof android.preference.PreferenceGroup)
+                && !(screen instanceof androidx.preference.PreferenceGroup)) {
+            // PreferenceGroup via reflection to avoid dual dependency issues
+        }
+        if (screen == null) return;
+
+        java.lang.reflect.Method find = screen.getClass().getMethod("findPreference", CharSequence.class);
+        Object about = find.invoke(screen, "about");
+        if (about == null) {
+            // 兜底找 privacy_settings
+            about = find.invoke(screen, "privacy_settings");
+        }
+        if (about == null) return;
+
+        java.lang.reflect.Method findMine = screen.getClass().getMethod("findPreference", CharSequence.class);
+        if (findMine.invoke(screen, PREF_KEY_MITYPE) != null) return; // already added
+
+        Class<?> prefCls = about.getClass();
+        Object ctx = null;
+        try {
+            java.lang.reflect.Method getCtx = prefCls.getMethod("getContext");
+            ctx = getCtx.invoke(about);
+        } catch (Throwable ignored) {
+        }
+        if (ctx == null) {
+            try {
+                java.lang.reflect.Method req = fragment.getClass().getMethod("requireContext");
+                ctx = req.invoke(fragment);
+            } catch (Throwable ignored) {
+            }
+        }
+        if (!(ctx instanceof android.content.Context)) return;
+        android.content.Context context = (android.content.Context) ctx;
+
+        Object neu;
+        try {
+            java.lang.reflect.Constructor<?> ctor = prefCls.getConstructor(android.content.Context.class);
+            neu = ctor.newInstance(context);
+        } catch (Throwable t) {
+            // 回退 Preference
+            neu = new android.preference.Preference(context);
+        }
+
+        prefCls.getMethod("setKey", String.class).invoke(neu, PREF_KEY_MITYPE);
+        prefCls.getMethod("setTitle", CharSequence.class).invoke(neu, "MitypeBlur 模块");
+        try {
+            prefCls.getMethod("setSummary", CharSequence.class)
+                    .invoke(neu, "毛玻璃 · 触感 · 按键音");
+        } catch (Throwable ignored) {
+        }
+
+        final android.content.Context clickCtx = context;
+        final ClassLoader loader = cl;
+        // OnPreferenceClickListener
+        Class<?> listenerCls = Class.forName(
+                "androidx.preference.Preference$OnPreferenceClickListener", false, cl);
+        Object listener = java.lang.reflect.Proxy.newProxyInstance(
+                cl, new Class<?>[]{listenerCls}, (proxy, method, args) -> {
+                    if ("onPreferenceClick".equals(method.getName())) {
+                        try {
+                            Intent intent = new Intent();
+                            intent.setClass(clickCtx,
+                                    Class.forName("com.mitype.blur.ui.MainActivity", false, loader));
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            clickCtx.startActivity(intent);
+                        } catch (Throwable ignored) {
+                        }
+                        return true;
+                    }
+                    return false;
+                });
+        prefCls.getMethod("setOnPreferenceClickListener", listenerCls).invoke(neu, listener);
+
+        // 插到 about 之前
+        java.lang.reflect.Method getCount = screen.getClass().getMethod("getPreferenceCount");
+        java.lang.reflect.Method getAt = screen.getClass().getMethod("getPreference", int.class);
+        int count = (Integer) getCount.invoke(screen);
+        int idx = count;
+        String aboutKey = "about";
+        for (int i = 0; i < count; i++) {
+            Object p = getAt.invoke(screen, i);
+            Object k = p.getClass().getMethod("getKey").invoke(p);
+            if (aboutKey.equals(String.valueOf(k)) || "privacy_settings".equals(String.valueOf(k))) {
+                idx = i;
+                break;
+            }
+        }
+        try {
+            java.lang.reflect.Method addAt = screen.getClass()
+                    .getMethod("addPreference", int.class, android.preference.Preference.class);
+            // may be androidx type
+            addAt.invoke(screen, idx, neu);
+        } catch (Throwable t1) {
+            try {
+                java.lang.reflect.Method addAt = screen.getClass()
+                        .getMethod("addPreference",
+                                int.class, Class.forName("androidx.preference.Preference", false, cl));
+                addAt.invoke(screen, idx, neu);
+            } catch (Throwable t2) {
+                java.lang.reflect.Method add = screen.getClass()
+                        .getMethod("addPreference",
+                                Class.forName("androidx.preference.Preference", false, cl));
+                add.invoke(screen, neu);
+            }
+        }
     }
 
     // H1a: 0.2.790+ 文字/UI 主题源 —— UiStateManager.u()
