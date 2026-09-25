@@ -1,5 +1,7 @@
 package com.mitype.blur.core;
 
+import android.media.AudioManager;
+
 import java.lang.reflect.Method;
 
 /**
@@ -234,9 +236,13 @@ public final class BlurHooks {
                         effect = (Integer) call.getArg(0);
                     } catch (Throwable ignored) {
                     }
-                    KeySoundPlayer.playEffect(effect);
-                    call.setResult(null);
-                    call.skip();
+                    Object host = call.getThisObject();
+                    AudioManager am = host instanceof AudioManager ? (AudioManager) host : null;
+                    // 播成功才接管；失败保留原生音，避免「完全没声音」
+                    if (KeySoundPlayer.playEffect(effect, am)) {
+                        call.setResult(null);
+                        call.skip();
+                    }
                 }
             });
             logFn.invoke("HS key-sound replace installed (" + pm.getName()
