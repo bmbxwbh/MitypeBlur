@@ -208,25 +208,14 @@ public final class BlurHooks {
     }
 
     /**
-     * HS: hook AudioManager.playSoundEffect —— 替换系统按键音为模块内置 wav。
-     * 0.2.974 在 z7.s 走 playSoundEffect(IF)。
+     * HS: hook AudioManager.playSoundEffect —— 替换系统按键音。
+     * 0.2.974 的 z7.s 同时存在 1 参与 2 参重载，必须都 hook。
      */
     private static void installKeySoundHook(LogFn logFn, ConfigFn configFn) {
+        int hooked = 0;
         try {
             Class<?> am = Class.forName("android.media.AudioManager");
-            Method play = TargetMap.anyArgs(am,
-                    new Class<?>[]{int.class, float.class},
-                    "playSoundEffect");
-            if (play == null) {
-                play = TargetMap.oneArg(am, int.class, "playSoundEffect");
-            }
-            if (play == null) {
-                logFn.invoke("HS playSoundEffect not found", null);
-                return;
-            }
-            final Method pm = play;
-            final boolean twoArg = pm.getParameterCount() == 2;
-            HookInstaller.hookBefore(pm, new HookInstaller.Interceptor() {
+            HookInstaller.Interceptor interceptor = new HookInstaller.Interceptor() {
                 @Override
                 public void intercept(HookInstaller.MethodCall call) {
                     Config cfg = configFn.get();
@@ -237,16 +226,29 @@ public final class BlurHooks {
                     } catch (Throwable ignored) {
                     }
                     Object host = call.getThisObject();
-                    AudioManager am = host instanceof AudioManager ? (AudioManager) host : null;
-                    // 播成功才接管；失败保留原生音，避免「完全没声音」
-                    if (KeySoundPlayer.playEffect(effect, am)) {
+                    AudioManager audio = host instanceof AudioManager ? (AudioManager) host : null;
+                    if (KeySoundPlayer.playEffect(effect, audio)) {
                         call.setResult(null);
                         call.skip();
                     }
                 }
-            });
-            logFn.invoke("HS key-sound replace installed (" + pm.getName()
-                    + (twoArg ? ",2args" : ",1arg") + ")", null);
+            };
+            Method m1 = TargetMap.oneArg(am, int.class, "playSoundEffect");
+            if (m1 != null) {
+                HookInstaller.hookBefore(m1, interceptor);
+                hooked++;
+            }
+            Method m2 = TargetMap.anyArgs(am,
+                    new Class<?>[]{int.class, float.class}, "playSoundEffect");
+            if (m2 != null) {
+                HookInstaller.hookBefore(m2, interceptor);
+                hooked++;
+            }
+            if (hooked == 0) {
+                logFn.invoke("HS playSoundEffect not found", null);
+            } else {
+                logFn.invoke("HS key-sound installed on " + hooked + " overload(s)", null);
+            }
         } catch (Throwable t) {
             logFn.invoke("HS key-sound install failed", t);
         }

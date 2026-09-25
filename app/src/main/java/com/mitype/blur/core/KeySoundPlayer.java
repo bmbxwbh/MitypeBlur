@@ -201,12 +201,24 @@ public final class KeySoundPlayer {
         try {
             ClassLoader cl = KeySoundPlayer.class.getClassLoader();
             if (cl != null) {
-                // LSPosed PathClassLoader：path 字段拼在 dex 路径里
-                Field path = cl.getClass().getField("path");
-                path.setAccessible(true);
-                Object v = path.get(cl);
-                if (v instanceof String && ((String) v).endsWith(".apk")) {
-                    out[n++] = (String) v;
+                // LSPosed/PathClassLoader.path 多为非 public，用 getDeclaredField
+                try {
+                    Field path = cl.getClass().getDeclaredField("path");
+                    path.setAccessible(true);
+                    Object v = path.get(cl);
+                    if (v instanceof String && ((String) v).contains(".apk")) {
+                        out[n++] = (String) v;
+                    }
+                } catch (Throwable ignored) {
+                }
+                try {
+                    Field path = ClassLoader.class.getDeclaredField("path");
+                    path.setAccessible(true);
+                    Object v = path.get(cl);
+                    if (v instanceof String && ((String) v).contains(".apk")) {
+                        out[n++] = (String) v;
+                    }
+                } catch (Throwable ignored) {
                 }
             }
         } catch (Throwable ignored) {
