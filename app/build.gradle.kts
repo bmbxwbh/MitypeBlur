@@ -11,8 +11,8 @@ android {
         applicationId = "com.mitype.blur"
         minSdk = 26
         targetSdk = 35
-        versionCode = 226
-        versionName = "2.1.16"
+        versionCode = 227
+        versionName = "2.1.17"
     }
 
     buildTypes {
