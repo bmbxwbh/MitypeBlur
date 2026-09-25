@@ -349,10 +349,6 @@ public final class BlurHooks {
         if (getScreen == null) return;
         getScreen.setAccessible(true);
         Object screen = getScreen.invoke(fragment);
-        if (!(screen instanceof android.preference.PreferenceGroup)
-                && !(screen instanceof androidx.preference.PreferenceGroup)) {
-            // PreferenceGroup via reflection to avoid dual dependency issues
-        }
         if (screen == null) return;
 
         java.lang.reflect.Method find = screen.getClass().getMethod("findPreference", CharSequence.class);
