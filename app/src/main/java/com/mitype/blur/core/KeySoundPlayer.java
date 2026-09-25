@@ -95,7 +95,8 @@ public final class KeySoundPlayer {
                     os.write(data);
                 }
             }
-            return sPool.load(out, 1);
+            // SoundPool 无 load(File,int)；用 path 字符串 API
+            return sPool.load(out.getAbsolutePath(), 1);
         } catch (Throwable t) {
             return 0;
         }
