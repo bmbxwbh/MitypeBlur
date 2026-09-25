@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.runtime.Composable
@@ -52,6 +53,7 @@ fun SettingsScreen(
         var blurPreset by remember(prefs) { mutableIntStateOf(prefs?.getInt(Config.KEY_BLUR_PRESET, Config.DEFAULT_BLUR_PRESET) ?: Config.DEFAULT_BLUR_PRESET) }
         var materialPolicy by remember(prefs) { mutableIntStateOf(prefs?.getInt(Config.KEY_MATERIAL_POLICY, Config.DEFAULT_MATERIAL_POLICY) ?: Config.DEFAULT_MATERIAL_POLICY) }
         var hapticPreset by remember(prefs) { mutableIntStateOf(prefs?.getInt(Config.KEY_HAPTIC_PRESET, Config.DEFAULT_HAPTIC_PRESET) ?: Config.DEFAULT_HAPTIC_PRESET) }
+        var keySound by remember(prefs) { mutableStateOf(prefs?.getBoolean(Config.KEY_KEY_SOUND, Config.DEFAULT_KEY_SOUND) ?: Config.DEFAULT_KEY_SOUND) }
         var bypassCheck by remember(prefs) { mutableStateOf(prefs?.getBoolean(Config.KEY_BYPASS_VERSION_CHECK, Config.DEFAULT_BYPASS_VERSION_CHECK) ?: Config.DEFAULT_BYPASS_VERSION_CHECK) }
         var devMode by remember(prefs) { mutableStateOf(prefs?.getBoolean(Config.KEY_DEV_MODE, false) ?: false) }
         val baseCfg = remember(prefs) { Config.load(prefs) }
@@ -232,6 +234,21 @@ fun SettingsScreen(
                             enabled = connected
                         )
                     }
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        SwitchPreference(
+                            checked = keySound,
+                            onCheckedChange = {
+                                keySound = it
+                                save { s -> s.putBoolean(Config.KEY_KEY_SOUND, it) }
+                            },
+                            title = "按键音效",
+                            summary = "替换系统按键音为内置微信风格短音；改动需重启输入法",
+                            startAction = {
+                                Icon(Icons.Rounded.MusicNote, contentDescription = null)
+                            },
+                            enabled = connected
+                        )
+                    }
                 }
 
                 // ── 开发者模式 ──
@@ -323,6 +340,7 @@ fun SettingsScreen(
                                     editor.putInt(Config.KEY_BLUR_PRESET, Config.DEFAULT_BLUR_PRESET)
                                     editor.putInt(Config.KEY_MATERIAL_POLICY, Config.DEFAULT_MATERIAL_POLICY)
                                     editor.putInt(Config.KEY_HAPTIC_PRESET, Config.DEFAULT_HAPTIC_PRESET)
+                                    editor.putBoolean(Config.KEY_KEY_SOUND, Config.DEFAULT_KEY_SOUND)
                                     editor.putBoolean(Config.KEY_BYPASS_VERSION_CHECK, Config.DEFAULT_BYPASS_VERSION_CHECK)
                                     editor.putBoolean(Config.KEY_DEV_MODE, false)
                                     editor.remove("frost_alpha")
@@ -339,6 +357,7 @@ fun SettingsScreen(
                                 blurPreset = Config.DEFAULT_BLUR_PRESET
                                 materialPolicy = Config.DEFAULT_MATERIAL_POLICY
                                 hapticPreset = Config.DEFAULT_HAPTIC_PRESET
+                                keySound = Config.DEFAULT_KEY_SOUND
                                 bypassCheck = Config.DEFAULT_BYPASS_VERSION_CHECK
                                 devMode = false
                                 devColor = baseCfg.effColorScale()

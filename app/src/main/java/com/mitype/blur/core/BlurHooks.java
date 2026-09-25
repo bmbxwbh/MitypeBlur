@@ -50,6 +50,7 @@ public final class BlurHooks {
         installStateGateHook(cl, tm, logFn, configFn);      // H1b 材质极性 / 防闪烁
         installMaterialCaptureHook(cl, tm, logFn, configFn); // P1' 材质捕获 + 单次参数写入
         installHapticStyleHook(cl, logFn, configFn);        // H4 触感风格重映射
+        installKeySoundHook(logFn, configFn);               // HS 按键音替换
         installStrokeUniformHook(cl, logFn, configFn);      // DEV 描边着色器细参
         installCandidateSoftenHook(cl, logFn, configFn);   // SOFT 候选词蓝光柔化
     }
@@ -173,14 +174,19 @@ public final class BlurHooks {
         }
     }
 
-    // H4: t9.b.a(事件枚举) after —— 按预设替换触感波形常量（唯一风格出口）
+    // H4: t9.b.a/aa(事件枚举) after —— 按预设替换触感波形（0.2.974 起方法为双字母 aa）
     private static void installHapticStyleHook(final ClassLoader cl, final LogFn logFn,
                                                final ConfigFn configFn) {
         try {
             Class<?> cls = Class.forName("t9.b", false, cl);
             Class<?> eventCls = Class.forName("t9.a", false, cl);
-            Method target = cls.getDeclaredMethod("a", eventCls);
-            HookInstaller.hookAfter(target, new HookInstaller.Interceptor() {
+            Method target = TargetMap.oneArg(cls, eventCls, "a", "aa");
+            if (target == null || target.getReturnType() != int.class) {
+                logFn.invoke("H4 haptic mapper not found (a/aa)", null);
+                return;
+            }
+            final Method tm = target;
+            HookInstaller.hookAfter(tm, new HookInstaller.Interceptor() {
                 @Override
                 public void intercept(HookInstaller.MethodCall call) {
                     Config cfg = configFn.get();
@@ -193,9 +199,50 @@ public final class BlurHooks {
                     }
                 }
             });
-            logFn.invoke("H4 haptic-style hook installed", null);
+            logFn.invoke("H4 haptic-style hook installed (" + tm.getName() + ")", null);
         } catch (Throwable t) {
             logFn.invoke("H4 install failed (haptic mapper missing?)", t);
+        }
+    }
+
+    /**
+     * HS: hook AudioManager.playSoundEffect —— 替换系统按键音为模块内置 wav。
+     * 0.2.974 在 z7.s 走 playSoundEffect(IF)。
+     */
+    private static void installKeySoundHook(LogFn logFn, ConfigFn configFn) {
+        try {
+            Class<?> am = Class.forName("android.media.AudioManager");
+            Method play = TargetMap.anyArgs(am,
+                    new Class<?>[]{int.class, float.class},
+                    "playSoundEffect");
+            if (play == null) {
+                play = TargetMap.oneArg(am, int.class, "playSoundEffect");
+            }
+            if (play == null) {
+                logFn.invoke("HS playSoundEffect not found", null);
+                return;
+            }
+            final Method pm = play;
+            final boolean twoArg = pm.getParameterCount() == 2;
+            HookInstaller.hookBefore(pm, new HookInstaller.Interceptor() {
+                @Override
+                public void intercept(HookInstaller.MethodCall call) {
+                    Config cfg = configFn.get();
+                    if (!cfg.enable || !cfg.keySound) return;
+                    int effect = 0;
+                    try {
+                        effect = (Integer) call.getArg(0);
+                    } catch (Throwable ignored) {
+                    }
+                    KeySoundPlayer.playEffect(effect);
+                    call.setResult(null);
+                    call.skip();
+                }
+            });
+            logFn.invoke("HS key-sound replace installed (" + pm.getName()
+                    + (twoArg ? ",2args" : ",1arg") + ")", null);
+        } catch (Throwable t) {
+            logFn.invoke("HS key-sound install failed", t);
         }
     }
 
