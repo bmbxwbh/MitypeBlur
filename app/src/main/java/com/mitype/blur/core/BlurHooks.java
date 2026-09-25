@@ -52,7 +52,7 @@ public final class BlurHooks {
         installStateGateHook(cl, tm, logFn, configFn);      // H1b 材质极性 / 防闪烁
         installMaterialCaptureHook(cl, tm, logFn, configFn); // P1' 材质捕获 + 单次参数写入
         installHapticStyleHook(cl, logFn, configFn);        // H4 触感风格重映射
-        installKeySoundHook(logFn, configFn);               // HS 按键音替换
+        installKeySoundHook(cl, logFn, configFn);         // HS 按键音替换
         installStrokeUniformHook(cl, logFn, configFn);      // DEV 描边着色器细参
         installCandidateSoftenHook(cl, logFn, configFn);   // SOFT 候选词蓝光柔化
     }
@@ -208,13 +208,45 @@ public final class BlurHooks {
     }
 
     /**
-     * HS: hook AudioManager.playSoundEffect —— 替换系统按键音。
-     * 0.2.974 的 z7.s 同时存在 1 参与 2 参重载，必须都 hook。
+     * HS: 替换按键音。
+     * 主路径：z7.s.j0(service, t9.a) —— IME 自己的键反馈入口（开关/音量/播放在里面）。
+     * 备路径：AudioManager.playSoundEffect 1/2 参重载。
+     * 播成功才 skip，失败保留原生。
      */
-    private static void installKeySoundHook(LogFn logFn, ConfigFn configFn) {
+    private static void installKeySoundHook(ClassLoader cl, LogFn logFn, ConfigFn configFn) {
         int hooked = 0;
+
+        // 1) 业务入口 z7.s.j0
         try {
-            Class<?> am = Class.forName("android.media.AudioManager");
+            Class<?> z7s = Class.forName("z7.s", false, cl);
+            Class<?> ims = Class.forName("com.hyperos.inputmethod.MiInputMethodService", false, cl);
+            Class<?> ev = Class.forName("t9.a", false, cl);
+            Method j0 = z7s.getDeclaredMethod("j0", ims, ev);
+            final Method jm = j0;
+            HookInstaller.hookBefore(jm, new HookInstaller.Interceptor() {
+                @Override
+                public void intercept(HookInstaller.MethodCall call) {
+                    Config cfg = configFn.get();
+                    if (!cfg.enable || !cfg.keySound) return;
+                    Object event = call.argCount() > 1 ? call.getArg(1) : null;
+                    String name = event != null ? event.toString() : "KEY_PRESS";
+                    Object svc = call.argCount() > 0 ? call.getArg(0) : null;
+                    AudioManager am = audioFromService(svc);
+                    if (KeySoundPlayer.playEvent(name, am)) {
+                        call.setResult(null);
+                        call.skip();
+                    }
+                }
+            });
+            hooked++;
+            logFn.invoke("HS hooked z7.s.j0 (key feedback)", null);
+        } catch (Throwable t) {
+            logFn.invoke("HS z7.s.j0 not found", t);
+        }
+
+        // 2) AudioManager 双重载兜底
+        try {
+            Class<?> amCls = Class.forName("android.media.AudioManager");
             HookInstaller.Interceptor interceptor = new HookInstaller.Interceptor() {
                 @Override
                 public void intercept(HookInstaller.MethodCall call) {
@@ -233,25 +265,46 @@ public final class BlurHooks {
                     }
                 }
             };
-            Method m1 = TargetMap.oneArg(am, int.class, "playSoundEffect");
+            Method m1 = TargetMap.oneArg(amCls, int.class, "playSoundEffect");
             if (m1 != null) {
                 HookInstaller.hookBefore(m1, interceptor);
                 hooked++;
             }
-            Method m2 = TargetMap.anyArgs(am,
+            Method m2 = TargetMap.anyArgs(amCls,
                     new Class<?>[]{int.class, float.class}, "playSoundEffect");
             if (m2 != null) {
                 HookInstaller.hookBefore(m2, interceptor);
                 hooked++;
             }
-            if (hooked == 0) {
-                logFn.invoke("HS playSoundEffect not found", null);
-            } else {
-                logFn.invoke("HS key-sound installed on " + hooked + " overload(s)", null);
-            }
         } catch (Throwable t) {
-            logFn.invoke("HS key-sound install failed", t);
+            logFn.invoke("HS AudioManager backup hook failed", t);
         }
+
+        if (hooked == 0) {
+            logFn.invoke("HS no hook target", null);
+        } else {
+            logFn.invoke("HS key-sound installed (" + hooked + " target(s))", null);
+        }
+    }
+
+    private static AudioManager audioFromService(Object ims) {
+        try {
+            // MiInputMethodService 继承 InputMethodService，有 getSystemService
+            java.lang.reflect.Method m = ims.getClass().getMethod(
+                    "getSystemService", String.class);
+            Object am = m.invoke(ims, android.content.Context.AUDIO_SERVICE);
+            if (am instanceof AudioManager) return (AudioManager) am;
+        } catch (Throwable ignored) {
+        }
+        try {
+            java.lang.reflect.Field f = ims.getClass().getSuperclass()
+                    .getDeclaredField("mAudioManager");
+            f.setAccessible(true);
+            Object o = f.get(ims);
+            if (o instanceof AudioManager) return (AudioManager) o;
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     // H1a: 0.2.790+ 文字/UI 主题源 —— UiStateManager.u()

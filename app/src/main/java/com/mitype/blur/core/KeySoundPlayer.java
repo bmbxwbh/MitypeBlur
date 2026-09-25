@@ -48,10 +48,22 @@ public final class KeySoundPlayer {
         } else {
             id = sClick;
         }
+        return playId(id);
+    }
+
+    /** 按 t9.a 枚举名选音：KEY_PRESS→click，ERROR→delete，其余→action。 */
+    public static boolean playEvent(String enumName, AudioManager am) {
+        if (!ensureReady(am)) return false;
+        String n = enumName == null ? "" : enumName;
+        if (n.contains("ERROR")) return playId(sDelete);
+        if (n.contains("KEY_PRESS") || n.contains("LONG_PRESS")) return playId(sClick);
+        return playId(sAction);
+    }
+
+    private static boolean playId(int id) {
         if (id <= 0 || sPool == null) return false;
         try {
-            int stream = sPool.play(id, 1f, 1f, 1, 0, 1f);
-            return stream != 0;
+            return sPool.play(id, 1f, 1f, 1, 0, 1f) != 0;
         } catch (Throwable t) {
             return false;
         }
