@@ -29,9 +29,9 @@ public final class TargetMap {
         this.materialFactoryMethod = materialFactoryMethod;
     }
 
-    /** 最新已验证规则（0.2.974.1cbd12c2）：R8 单字母→双字母；未知版本默认走这套。 */
+    /** 最新已验证规则（0.2.1053.06f65b7c）：包名 ab/we，方法仍双字母。 */
     public static final TargetMap LATEST =
-            new TargetMap("bb.b0", "xe.h", "qq", "xe.b", "cc", "ee", "dd");
+            new TargetMap("ab.i0", "we.h", "qq", "we.b", "cc", "ee", "dd");
 
     private static final Map<Long, TargetMap> MAP = new HashMap<>();
 
@@ -43,7 +43,8 @@ public final class TargetMap {
         MAP.put(20599L, new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e")); // 0.2.599.905736fd
         MAP.put(20790L, new TargetMap("bb.x", "xe.h", "q", "xe.b", "c", "e", "d")); // 0.2.790.6ca2b9d4
         MAP.put(20910L, new TargetMap("bb.b0", "xe.h", "q", "xe.b", "c", "e", "d")); // 0.2.910.ba19145a
-        MAP.put(20974L, LATEST); // 0.2.974.1cbd12c2：方法名双写 dd/cc/ee/qq，UiState=bb.q1
+        MAP.put(20974L, new TargetMap("bb.b0", "xe.h", "qq", "xe.b", "cc", "ee", "dd")); // 0.2.974 双字母
+        MAP.put(21053L, LATEST); // 0.2.1053：helper=ab.i0，API=we.h/b
     }
 
     /** 按候选名依次查找无参方法（兼容 0.2.974 双写字母）。 */
@@ -152,8 +153,9 @@ public final class TargetMap {
     /** 未知版本形状探测：优先匹配已收录候选，失败时由调用方回退 {@link #LATEST}。 */
     public static TargetMap detectByShape(ClassLoader cl) {
         TargetMap[] candidates = {
-                LATEST, // bb.b0 + dd/cc/ee/qq @ 0.2.974
-                new TargetMap("bb.b0", "xe.h", "q", "xe.b", "c", "e", "d"), // 0.2.910 单字母
+                LATEST, // ab.i0 + we.h/b @ 0.2.1053
+                new TargetMap("bb.b0", "xe.h", "qq", "xe.b", "cc", "ee", "dd"), // 0.2.974
+                new TargetMap("bb.b0", "xe.h", "q", "xe.b", "c", "e", "d"), // 0.2.910
                 new TargetMap("bb.x", "xe.h", "q", "xe.b", "c", "e", "d"), // 0.2.790
                 new TargetMap("bb.u", "xe.h", "q", "xe.b", "c", "e", "e"),
                 new TargetMap("bb.s", "xe.h", "q", "xe.b", "c", "e", "d"),

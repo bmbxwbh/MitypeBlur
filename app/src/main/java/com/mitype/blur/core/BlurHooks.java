@@ -457,9 +457,9 @@ public final class BlurHooks {
     // 跟随系统也强制跟系统夜间模式，避免输入法皮肤偏好把文字带成白色。
     private static void installUiThemeHook(ClassLoader cl, LogFn logFn, ConfigFn configFn) {
         try {
-            // 0.2.910=bb.p1；0.2.974=bb.q1；方法 u（974 仍单字母）
+            // 0.2.910=bb.p1；0.2.974=bb.q1；0.2.1053=ab.z1；方法 u
             Class<?> ui = null;
-            for (String n : new String[]{"bb.q1", "bb.p1"}) {
+            for (String n : new String[]{"ab/z1", "bb/q1", "bb/p1"}) {
                 try {
                     ui = Class.forName(n, false, cl);
                     break;
@@ -582,7 +582,8 @@ public final class BlurHooks {
     private static void forcePackageWhitelist(Object helper) {
         try {
             String pkg = null;
-            for (String n : new String[]{"t", "u", "v"}) {
+            // 1053: uu；974: u/t；910: t
+            for (String n : new String[]{"uu", "tt", "u", "v", "t"}) {
                 Object o = ReflectUtil.getObjectField(helper, n);
                 if (o instanceof String && !((String) o).isEmpty()) {
                     pkg = (String) o;
@@ -591,8 +592,8 @@ public final class BlurHooks {
             }
             if (pkg == null) return;
 
-            // packageMaterialVersions: 第一个 Map 字段
-            for (String n : new String[]{"u", "v", "w"}) {
+            // packageMaterialVersions: Map 字段（1053: vv/ww；974: v；910: u）
+            for (String n : new String[]{"vv", "ww", "u", "v", "w"}) {
                 Object m = ReflectUtil.getObjectField(helper, n);
                 if (m instanceof java.util.Map) {
                     java.util.Map<Object, Object> map = (java.util.Map<Object, Object>) m;
@@ -606,9 +607,9 @@ public final class BlurHooks {
                 }
             }
 
-            // 两个 Set：dark / light。已知对 (v,w) 或 (w,x)
+            // 两个 Set：dark / light（1053: yy/zz；974: w/x；910: v/w）
             String setA = null, setB = null;
-            for (String n : new String[]{"v", "w", "x", "y"}) {
+            for (String n : new String[]{"yy", "zz", "v", "w", "x", "y"}) {
                 if (ReflectUtil.getObjectField(helper, n) instanceof java.util.Set) {
                     if (setA == null) setA = n;
                     else if (setB == null) {
@@ -618,15 +619,50 @@ public final class BlurHooks {
                 }
             }
             if (setA == null || setB == null) return;
-            String darkSet = setA; // v→dark(910) / w→dark(974 当 A=w,B=x)
+            String darkSet = setA;
             String lightSet = setB;
-            // 974 第一个 Set 是 w（dark）、第二个 x（light）——与 setA/setB 顺序一致
 
             boolean dark = ReflectUtil.getBooleanField(helper, "l", false);
             addToSetField(helper, dark ? darkSet : lightSet, pkg, true);
             addToSetField(helper, dark ? lightSet : darkSet, pkg, false);
         } catch (Throwable ignored) {
         }
+    }
+
+    /** 1053 pp(Map,Map,Set,Set)：往 args 里塞当前包（尽力而为）。 */
+    private static Object forcePackageIntoArgs(HookInstaller.MethodCall call) {
+        Object thiz = call.getThisObject();
+        if (thiz == null || call.argCount() < 4) return null;
+        String pkg = null;
+        for (String n : new String[]{"uu", "tt", "u", "v", "t"}) {
+            Object o = ReflectUtil.getObjectField(thiz, n);
+            if (o instanceof String && !((String) o).isEmpty()) {
+                pkg = (String) o;
+                break;
+            }
+        }
+        if (pkg == null) return null;
+        boolean dark = ReflectUtil.getBooleanField(thiz, "l", false);
+        try {
+            // pp(Map versions, Map ?, Set dark, Set light)
+            Object m0 = call.getArg(0);
+            if (m0 instanceof java.util.Map) {
+                ((java.util.Map<Object, Object>) m0).put(pkg, 2);
+            }
+            Object m1 = call.getArg(1);
+            if (m1 instanceof java.util.Map) {
+                ((java.util.Map<Object, Object>) m1).put(pkg, 2);
+            }
+            Object s0 = call.getArg(2);
+            Object s1 = call.getArg(3);
+            if (dark && s0 instanceof java.util.Set) {
+                ((java.util.Set<Object>) s0).add(pkg);
+            } else if (!dark && s1 instanceof java.util.Set) {
+                ((java.util.Set<Object>) s1).add(pkg);
+            }
+        } catch (Throwable ignored) {
+        }
+        return pkg;
     }
 
     @SuppressWarnings("unchecked")
@@ -777,6 +813,27 @@ public final class BlurHooks {
                         public void intercept(HookInstaller.MethodCall call) {
                             Object thiz = call.getThisObject();
                             if (thiz == null || !configFn.get().enable) return;
+                            forcePackageWhitelist(thiz);
+                        }
+                    });
+                }
+                // 0.2.1053: j() 变为 pp(Map,Map,Set,Set)V，白名单在参数里更新
+                Method recomputePp = TargetMap.anyArgs(cls, new Class<?>[]{
+                        java.util.Map.class, java.util.Map.class,
+                        java.util.Set.class, java.util.Set.class}, "pp");
+                if (recomputePp != null) {
+                    final Method pp = recomputePp;
+                    HookInstaller.hookBefore(pp, new HookInstaller.Interceptor() {
+                        @Override
+                        public void intercept(HookInstaller.MethodCall call) {
+                            Object thiz = call.getThisObject();
+                            if (thiz == null || !configFn.get().enable) return;
+                            // 在 native 写回前把当前包塞进参数 Map/Set，避免 View 被摘
+                            try {
+                                Object pkg = forcePackageIntoArgs(call);
+                                logFn.invoke("HS/whitelist pp() args patched", null);
+                            } catch (Throwable ignored) {
+                            }
                             forcePackageWhitelist(thiz);
                         }
                     });
